@@ -26,28 +26,6 @@ EXCLUDED_DIRECTORY_NAMES = frozenset(
         "node_modules",
     }
 )
-# Public governance records are scanned by default. These exact approved
-# planning records intentionally quote restricted identifiers to document the
-# public/private boundary; do not replace this list with a directory-level
-# exclusion. New files in either public documentation tree remain scan scope.
-EXCLUDED_RELATIVE_FILES = frozenset(
-    {
-        Path(".superpowers/sdd/progress.md"),
-        Path("docs/superpowers/plans/2026-07-15-capability-catalog-plugin-orchestration.md"),
-        Path("docs/superpowers/plans/2026-07-15-constitution-truncation-hardening.md"),
-        Path("docs/superpowers/plans/2026-07-15-live-bootstrap-evidence-task-reconciliation.md"),
-        Path("docs/superpowers/plans/2026-07-15-private-emma-workspace-adapter-v6.md"),
-        Path("docs/superpowers/plans/2026-07-15-skill-pack-foundation-build-pipeline.md"),
-        Path("docs/superpowers/specs/2026-07-15-autonomous-memory-capture-design.md"),
-        Path("docs/superpowers/specs/2026-07-15-capability-catalog-plugin-orchestration-design.md"),
-        Path("docs/superpowers/specs/2026-07-15-constitution-truncation-safety-addendum.md"),
-        Path("docs/superpowers/specs/2026-07-15-live-bootstrap-evidence-task-reconciliation-addendum.md"),
-        Path("docs/superpowers/specs/2026-07-15-one-time-disclosure-consent-addendum.md"),
-        Path("docs/superpowers/specs/2026-07-15-personal-ai-workspace-skill-pack-phase-1-design.md"),
-        Path("docs/superpowers/specs/2026-07-15-phase-1-release-scope-audit.md"),
-        Path("docs/superpowers/specs/PHASE-1-CODEX-ENTRYPOINT.md"),
-    }
-)
 BINARY_SUFFIXES = frozenset(
     {
         ".7z",
@@ -79,10 +57,111 @@ BINARY_SUFFIXES = frozenset(
         ".zip",
     }
 )
+PUBLIC_PROJECT_EMAIL = "michal24749@gmail.com"
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 PRIVATE_REPOSITORY = "oloix888" + "/" + "Apex"
 PRIVATE_MANIFEST = "emma-workspace" + "-memory"
-PRIVATE_REPO_RE = re.compile(r"\b" + re.escape(PRIVATE_REPOSITORY) + r"\b", re.IGNORECASE)
+# All public documentation, specifications, plans, and ledgers are scanned.
+# These exact historical public-document lines and published Apex #6--#18
+# references are retained only to explain the approved migration boundary.
+# The policy is deliberately value-based, not path-based: it suppresses
+# neither arbitrary repository references nor any email, secret, Notion/Drive
+# identifier, or other private value. Any documentation change that adds a
+# private-manifest reference must be reviewed and added here explicitly.
+APPROVED_HISTORICAL_MANIFEST_LINES = frozenset(
+    {
+        f"- Verified migration baseline and rollback target: {PRIVATE_MANIFEST} 5.6.0.",
+        f"The private `{PRIVATE_MANIFEST} v6.0.0` adapter must:",
+        (
+            "- No public runtime package may contain private Notion IDs, private Google "
+            f"account or Drive folder IDs, `{PRIVATE_REPOSITORY}`, private contacts, Gmail "
+            f"content, or the private `{PRIVATE_MANIFEST}` manifest."
+        ),
+        (
+            f"**Goal:** Migrate the private `{PRIVATE_MANIFEST}` skill from v5.5.0 to a thin "
+            "v6.0.0 adapter that composes the public Personal AI Workspace Skill Pack with "
+            "Michał's private identities, source map, Constitution, task backend and one-time "
+            "disclosure controls."
+        ),
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/SKILL.md`",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/agents/openai.yaml`",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/references/private-workspace-manifest.example.md`",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/references/public-skill-compatibility.json`",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/tests/test_adapter_contract.py`",
+        f"python -m pytest private/{PRIVATE_MANIFEST}-v6/tests/test_adapter_contract.py -v",
+        f"git add private/{PRIVATE_MANIFEST}-v6",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/scripts/load_private_manifest.py`",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/references/private-manifest.schema.json`",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/tests/test_private_manifest.py`",
+        f"python -m pytest private/{PRIVATE_MANIFEST}-v6/tests/test_private_manifest.py -v",
+        (
+            f"git add private/{PRIVATE_MANIFEST}-v6/scripts "
+            f"private/{PRIVATE_MANIFEST}-v6/references/private-manifest.schema.json "
+            f"private/{PRIVATE_MANIFEST}-v6/tests"
+        ),
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/references/external-disclosure-routing.md`",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/scripts/validate_private_disclosure.py`",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/tests/test_private_disclosure.py`",
+        f"python -m pytest private/{PRIVATE_MANIFEST}-v6/tests/test_private_disclosure.py -v",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/references/context-routing.md`",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/tests/test_context_routing.py`",
+        f"- Modify: `private/{PRIVATE_MANIFEST}-v6/SKILL.md`",
+        f"python -m pytest private/{PRIVATE_MANIFEST}-v6/tests/test_context_routing.py -v",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/migrations/5.5.0-to-6.0.0/migration.json`",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/migrations/5.5.0-to-6.0.0/preconditions.md`",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/migrations/5.5.0-to-6.0.0/operations.md`",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/migrations/5.5.0-to-6.0.0/validation.md`",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/migrations/5.5.0-to-6.0.0/rollback.md`",
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/tests/test_migration.py`",
+        f"python -m pytest private/{PRIVATE_MANIFEST}-v6/tests/test_migration.py -v",
+        (
+            f"git add private/{PRIVATE_MANIFEST}-v6/migrations "
+            f"private/{PRIVATE_MANIFEST}-v6/tests/test_migration.py"
+        ),
+        f"- Create: `private/{PRIVATE_MANIFEST}-v6/tests/test_packaging.py`",
+        (
+            "**Applies to:** public creator, Installer & Upgrader skill, Context Bootstrap skill, "
+            "public ChatGPT/Codex Skill Pack, Codex installers and AGENTS.md guidance, future "
+            "specialist skills, public documentation and tests, plus the private "
+            f"`{PRIVATE_MANIFEST} v6.0.0` adapter."
+        ),
+        f"migration baseline: {PRIVATE_MANIFEST} 5.6.0",
+        f"rollback target: {PRIVATE_MANIFEST} 5.6.0",
+        f"build target: {PRIVATE_MANIFEST} 6.0.0-rc.1",
+        (
+            "**Applies to:** public creator, Installer & Upgrader, Context Bootstrap, shared "
+            "Skill Pack contracts, ChatGPT/Codex installation guidance, validators, migrations, "
+            "tests, release gates, and private "
+            f"`{PRIVATE_MANIFEST} v6.0.0` adapter."
+        ),
+        f"**Target private adapter:** `{PRIVATE_MANIFEST} 6.0.0-rc.1`",
+        f"{PRIVATE_MANIFEST} 6.0.0-rc.1",
+    }
+)
+APPROVED_HISTORICAL_REPOSITORY_REFERENCES = frozenset(
+    f"{PRIVATE_REPOSITORY.lower()}#{issue_number}" for issue_number in range(6, 19)
+)
+APPROVED_HISTORICAL_REPOSITORY_LINES = frozenset(
+    {
+        (
+            "- Public packages contain no private Emma Workspace identifiers, private accounts, "
+            "contacts, Gmail content, or "
+            f"`{PRIVATE_REPOSITORY}` runtime references."
+        ),
+        (
+            "- No public runtime package may contain private Notion IDs, private Google account "
+            "or Drive folder IDs, "
+            f"`{PRIVATE_REPOSITORY}`, private contacts, Gmail content, or the private "
+            f"`{PRIVATE_MANIFEST}` manifest."
+        ),
+        f'PRIVATE_REPO_RE = re.compile(r"\\b{PRIVATE_REPOSITORY}\\b", re.IGNORECASE)',
+        f"Private task repository: {PRIVATE_REPOSITORY}",
+        f"- `{PRIVATE_REPOSITORY}` references inside public runtime packages;",
+    }
+)
+PRIVATE_REPO_RE = re.compile(
+    r"\b" + re.escape(PRIVATE_REPOSITORY) + r"(?:#\d+)?\b", re.IGNORECASE
+)
 AUTH_SECRET_RE = re.compile(
     r"""(?ix)
     (?:
@@ -187,7 +266,7 @@ def _iter_public_files(root: Path):
             relative = path.relative_to(root)
             if path.is_symlink():
                 raise PublicSafetyError(f"unable to scan symlink: {relative.as_posix()}")
-            if path.is_file() and relative not in EXCLUDED_RELATIVE_FILES:
+            if path.is_file():
                 yield path, relative
 
 
@@ -290,7 +369,13 @@ def _scan_line(relative: str, line_number: int, line: str, public_email: str) ->
     for email in EMAIL_RE.findall(line):
         if email.lower() != public_email.lower():
             findings.append(Finding(relative, line_number, "non_allowlisted_email", stripped))
-    if PRIVATE_REPO_RE.search(line):
+    if (
+        stripped not in APPROVED_HISTORICAL_REPOSITORY_LINES
+        and any(
+            match.group(0).lower() not in APPROVED_HISTORICAL_REPOSITORY_REFERENCES
+            for match in PRIVATE_REPO_RE.finditer(line)
+        )
+    ):
         findings.append(Finding(relative, line_number, "private_repo_reference", stripped))
     if AUTH_SECRET_RE.search(line):
         findings.append(Finding(relative, line_number, "authentication_secret_literal", stripped))
@@ -298,12 +383,34 @@ def _scan_line(relative: str, line_number: int, line: str, public_email: str) ->
         findings.append(Finding(relative, line_number, "notion_private_url", stripped))
     if GOOGLE_DRIVE_URL_RE.search(line) or GOOGLE_DRIVE_ID_RE.search(line):
         findings.append(Finding(relative, line_number, "google_drive_identifier", stripped))
-    if PRIVATE_MANIFEST_RE.search(line):
+    if PRIVATE_MANIFEST_RE.search(line) and stripped not in APPROVED_HISTORICAL_MANIFEST_LINES:
         findings.append(Finding(relative, line_number, "private_manifest_reference", stripped))
     return findings
 
 
-def scan_tree(root: Path, public_email: str) -> list[Finding]:
+def _scan_file(path: Path, relative: str, public_email: str) -> list[Finding]:
+    contents = _read_file_bytes(path, relative)
+    if path.suffix.lower() == ".zip" or _looks_like_zip(contents):
+        text_sources = _iter_zip_texts(contents, relative)
+    else:
+        text_sources = ((relative, _decode_contents(contents, relative, path.suffix)),)
+
+    findings: list[Finding] = []
+    for text_relative, text in text_sources:
+        for line_number, line in enumerate(text.splitlines(), 1):
+            findings.extend(_scan_line(text_relative, line_number, line, public_email))
+    return findings
+
+
+def scan_file(path: Path, public_email: str = PUBLIC_PROJECT_EMAIL) -> list[Finding]:
+    if path.is_symlink():
+        raise PublicSafetyError(f"unable to scan symlink: {path}")
+    if not path.is_file():
+        raise PublicSafetyError(f"scan target is not a file: {path}")
+    return _scan_file(path, path.name, public_email)
+
+
+def scan_tree(root: Path, public_email: str = PUBLIC_PROJECT_EMAIL) -> list[Finding]:
     if root.is_symlink():
         raise PublicSafetyError(f"unable to scan symlink: {root}")
     if not root.is_dir():
@@ -312,21 +419,22 @@ def scan_tree(root: Path, public_email: str) -> list[Finding]:
     findings: list[Finding] = []
     for path, relative_path in _iter_public_files(root):
         relative = relative_path.as_posix()
-        contents = _read_file_bytes(path, relative)
-        if path.suffix.lower() == ".zip" or _looks_like_zip(contents):
-            text_sources = _iter_zip_texts(contents, relative)
-        else:
-            text_sources = ((relative, _decode_contents(contents, relative, path.suffix)),)
-        for text_relative, text in text_sources:
-            for line_number, line in enumerate(text.splitlines(), 1):
-                findings.extend(_scan_line(text_relative, line_number, line, public_email))
+        findings.extend(_scan_file(path, relative, public_email))
     return findings
 
 
-def assert_public_safe(root: Path, public_email: str) -> None:
-    findings = scan_tree(root, public_email)
+def _assert_no_findings(findings: list[Finding]) -> None:
     if findings:
         detail = "\n".join(
             f"{item.path}:{item.line} [{item.rule}] {item.excerpt}" for item in findings
         )
         raise PublicSafetyError(detail)
+
+
+def assert_public_safe(root: Path, public_email: str = PUBLIC_PROJECT_EMAIL) -> None:
+    findings = scan_tree(root, public_email)
+    _assert_no_findings(findings)
+
+
+def assert_public_file_safe(path: Path, public_email: str = PUBLIC_PROJECT_EMAIL) -> None:
+    _assert_no_findings(scan_file(path, public_email))

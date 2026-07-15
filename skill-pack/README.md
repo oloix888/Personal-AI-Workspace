@@ -18,12 +18,15 @@ python skill-pack/scripts/scan_private_identifiers.py .
 python skill-pack/scripts/package_skill_pack.py skill-pack/build/personal-ai-workspace-installer-upgrader
 ```
 
-The repository-root scan covers every regular UTF-8 public source and configuration
-file, including extensionless files and unfamiliar text suffixes. It excludes only
-private Git internals, generated environments/caches, and the implementation-governance
-records under `.superpowers/` and `docs/superpowers/`, which intentionally quote
-restricted identifiers while defining the public/private boundary. Unknown files that
-are neither UTF-8 text nor a declared binary asset format fail the scan.
+The repository-root scan covers every regular UTF-8 public source, configuration, and
+governance document, including extensionless files and unfamiliar text suffixes. It
+excludes only private Git internals and generated environments/caches. A narrow,
+value-level policy permits only enumerated historical private-manifest and task-tracker
+reference lines, plus published Apex #6--#18 references, needed to describe the
+public/private migration. It does not permit other task-tracker or private-manifest
+references, or suppress emails, secrets, Notion IDs, Drive IDs, or archive contents.
+Unknown files that are neither UTF-8 text nor a declared binary asset format fail the
+scan.
 
 ZIP archives are identified from their content as well as their filename, so a ZIP
 hidden behind a binary extension is scanned too. Archive inspection recurses through

@@ -21,7 +21,7 @@ def test_scanner_detects_non_allowlisted_email_and_private_repo(tmp_path: Path) 
     unsafe = tmp_path / "unsafe.md"
     unsafe.write_text(
         f"Private account: {synthetic_private_email}\n"
-        f"Private task repository: {synthetic_private_reference}\n",
+        f"Unexpected task-tracker reference: {synthetic_private_reference}\n",
         encoding="utf-8",
     )
 
@@ -260,9 +260,15 @@ def test_scanner_fails_closed_for_invalid_zip_signature_with_binary_extension(
 
 @pytest.mark.parametrize(
     "relative",
-    [Path(".superpowers/sdd/unlisted.md"), Path("docs/superpowers/unlisted.md")],
+    [
+        Path(".superpowers/sdd/unlisted.md"),
+        Path("docs/superpowers/unlisted.md"),
+        # This exact location was once excluded as a whole. A non-allowlisted
+        # email here must now fail the same way as it would anywhere else.
+        Path(".superpowers/sdd/progress.md"),
+    ],
 )
-def test_scanner_scans_unlisted_governance_and_documentation_files(
+def test_scanner_scans_governance_and_documentation_files(
     tmp_path: Path, relative: Path
 ) -> None:
     private_email = "private.user" + "@example.com"
@@ -273,6 +279,38 @@ def test_scanner_scans_unlisted_governance_and_documentation_files(
     rules = {finding.rule for finding in scan_tree(tmp_path, "michal24749@gmail.com")}
 
     assert "non_allowlisted_email" in rules
+
+
+def test_historical_reference_policy_does_not_suppress_email_or_secret(
+    tmp_path: Path,
+) -> None:
+    private_email = "private.user" + "@example.com"
+    private_tracker = "/".join(("oloix888", "Apex"))
+    token_key = "".join(("to", "ken"))
+    former_exclusion = tmp_path / ".superpowers/sdd/progress.md"
+    former_exclusion.parent.mkdir(parents=True)
+    former_exclusion.write_text(
+        f"Historical tracking: {private_tracker}\n"
+        f"Unexpected contact: {private_email}\n"
+        f"{token_key}=synthetic-value\n",
+        encoding="utf-8",
+    )
+
+    rules = {finding.rule for finding in scan_tree(tmp_path, "michal24749@gmail.com")}
+
+    assert "non_allowlisted_email" in rules
+    assert "authentication_secret_literal" in rules
+
+
+def test_scanner_detects_non_historical_private_manifest_reference(tmp_path: Path) -> None:
+    private_manifest = "emma-workspace" + "-memory"
+    (tmp_path / "unsafe-manifest.md").write_text(
+        f"manifest = {private_manifest}\n", encoding="utf-8"
+    )
+
+    rules = {finding.rule for finding in scan_tree(tmp_path, "michal24749@gmail.com")}
+
+    assert "private_manifest_reference" in rules
 
 
 def test_scanner_fails_closed_for_unreadable_directories(
