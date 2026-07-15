@@ -1,3 +1,4 @@
+import io
 from pathlib import Path
 import zipfile
 
@@ -92,6 +93,28 @@ def test_scanner_detects_synthetic_notion_dot_com_identifier(tmp_path: Path) -> 
     assert "notion_private_url" in rules
 
 
+@pytest.mark.parametrize("host", ["notion.com", "www.notion.com"])
+def test_scanner_detects_hyphenated_notion_uuid_identifier(tmp_path: Path, host: str) -> None:
+    identifier = "123e4567-e89b-12d3-a456-426614174000"
+    (tmp_path / "public-reference.txt").write_text(
+        f"https://{host}/workspace/{identifier}\n", encoding="utf-8"
+    )
+
+    rules = {finding.rule for finding in scan_tree(tmp_path, "michal24749@gmail.com")}
+
+    assert "notion_private_url" in rules
+
+
+def test_scanner_allows_fictional_notion_fixture_without_private_identifier(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "fixture.md").write_text(
+        "https://www.notion.com/fictional-workspace/constitution\n", encoding="utf-8"
+    )
+
+    assert scan_tree(tmp_path, "michal24749@gmail.com") == []
+
+
 def test_scanner_fails_closed_for_unclassified_non_utf8_files(tmp_path: Path) -> None:
     (tmp_path / "unclassified.data").write_bytes(b"\xff\xfe")
 
@@ -141,10 +164,97 @@ def test_scanner_scans_zip_members(tmp_path: Path) -> None:
     ]
 
 
+def test_scanner_scans_deflated_zip_hidden_by_binary_extension(tmp_path: Path) -> None:
+    private_email = "private.user" + "@example.com"
+    with zipfile.ZipFile(
+        tmp_path / "payload.pdf", "w", compression=zipfile.ZIP_DEFLATED
+    ) as archive:
+        archive.writestr("private.md", private_email)
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    assert [(finding.path, finding.rule) for finding in findings] == [
+        ("payload.pdf!private.md", "non_allowlisted_email")
+    ]
+
+
+def test_scanner_recursively_scans_nested_zip_members(tmp_path: Path) -> None:
+    private_email = "private.user" + "@example.com"
+    inner_bytes = io.BytesIO()
+    with zipfile.ZipFile(inner_bytes, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("private.md", private_email)
+    with zipfile.ZipFile(tmp_path / "outer.zip", "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("nested/inner.zip", inner_bytes.getvalue())
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    assert [(finding.path, finding.rule) for finding in findings] == [
+        ("outer.zip!nested/inner.zip!private.md", "non_allowlisted_email")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("limit_name", "limit", "expected_error"),
+    [
+        ("MAX_ZIP_ARCHIVE_SIZE", 1, "ZIP archive exceeds size limit: archive.zip"),
+        ("MAX_ZIP_MEMBER_COUNT", 1, "ZIP member count exceeds limit: archive.zip"),
+        (
+            "MAX_ZIP_MEMBER_SIZE",
+            1,
+            "ZIP member exceeds size limit: archive.zip!first.txt",
+        ),
+        (
+            "MAX_ZIP_TOTAL_UNCOMPRESSED_SIZE",
+            1,
+            "ZIP total uncompressed size exceeds limit: archive.zip",
+        ),
+    ],
+)
+def test_scanner_fails_closed_at_configured_zip_size_and_member_limits(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    limit_name: str,
+    limit: int,
+    expected_error: str,
+) -> None:
+    with zipfile.ZipFile(tmp_path / "archive.zip", "w") as archive:
+        archive.writestr("first.txt", "xx")
+        archive.writestr("second.txt", "x")
+    monkeypatch.setattr(scanner, limit_name, limit)
+
+    with pytest.raises(PublicSafetyError, match=expected_error):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+def test_scanner_fails_closed_at_configured_zip_nesting_limit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    inner_bytes = io.BytesIO()
+    with zipfile.ZipFile(inner_bytes, "w") as archive:
+        archive.writestr("safe.txt", "safe")
+    with zipfile.ZipFile(tmp_path / "outer.zip", "w") as archive:
+        archive.writestr("inner.zip", inner_bytes.getvalue())
+    monkeypatch.setattr(scanner, "MAX_ZIP_NESTED_DEPTH", 0)
+
+    with pytest.raises(
+        PublicSafetyError, match="ZIP recursion depth exceeds limit: outer.zip!inner.zip"
+    ):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
 def test_scanner_fails_closed_for_invalid_zip_archives(tmp_path: Path) -> None:
     (tmp_path / "artifact.zip").write_bytes(b"not a ZIP archive")
 
     with pytest.raises(PublicSafetyError, match="invalid ZIP archive: artifact.zip"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+def test_scanner_fails_closed_for_invalid_zip_signature_with_binary_extension(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "payload.pdf").write_bytes(b"PK\x03\x04not a ZIP archive")
+
+    with pytest.raises(PublicSafetyError, match="invalid ZIP archive: payload.pdf"):
         scan_tree(tmp_path, "michal24749@gmail.com")
 
 

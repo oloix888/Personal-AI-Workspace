@@ -108,7 +108,9 @@ AUTH_SECRET_RE = re.compile(
 )
 NOTION_PRIVATE_RE = re.compile(
     r"(?i)(?:https?://(?:www\.)?notion\.(?:site|so)/[^\s)]+|"
-    r"https?://(?:www\.)?notion\.com/[^\s)]*[0-9a-f]{32}(?=[/?#\s)'\"]|$)|"
+    r"https?://(?:www\.)?notion\.com/[^\s)]*(?<![0-9a-f-])(?:[0-9a-f]{32}|"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+    r"(?![0-9a-f-])(?=[/?#\s)'\".,;:]|$)|"
     r"\b(?:notion[_ -]?)?(?:page|database|view)[_ -]?id\b\s*[:=]\s*[\"']?[0-9a-f-]{32,})"
 )
 GOOGLE_DRIVE_URL_RE = re.compile(
@@ -119,7 +121,15 @@ GOOGLE_DRIVE_ID_RE = re.compile(
     r"\s*[:=]\s*[\"']?[A-Za-z0-9_-]{10,}"
 )
 PRIVATE_MANIFEST_RE = re.compile(r"\b" + re.escape(PRIVATE_MANIFEST) + r"\b", re.IGNORECASE)
+ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
+# Archive inspection is deliberately bounded. Limits apply to each archive in
+# a nested chain so untrusted public artifacts cannot consume unbounded memory
+# or decompression work while the scanner fails closed.
+MAX_ZIP_ARCHIVE_SIZE = 50 * 1024 * 1024
+MAX_ZIP_MEMBER_COUNT = 1_024
 MAX_ZIP_MEMBER_SIZE = 10 * 1024 * 1024
+MAX_ZIP_TOTAL_UNCOMPRESSED_SIZE = 50 * 1024 * 1024
+MAX_ZIP_NESTED_DEPTH = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,17 +231,29 @@ def _validate_zip_member_path(archive_relative: str, member: zipfile.ZipInfo) ->
         raise PublicSafetyError(f"invalid ZIP member path: {relative}")
     if stat.S_ISLNK(member.external_attr >> 16):
         raise PublicSafetyError(f"unable to scan symlink: {relative}")
+    if member.flag_bits & 0x1:
+        raise PublicSafetyError(f"encrypted ZIP member: {relative}")
 
 
-def _iter_zip_texts(contents: bytes, archive_relative: str):
+def _looks_like_zip(contents: bytes) -> bool:
+    return contents.startswith(ZIP_SIGNATURES) or zipfile.is_zipfile(io.BytesIO(contents))
+
+
+def _iter_zip_texts(contents: bytes, archive_relative: str, nested_depth: int = 0):
+    if nested_depth > MAX_ZIP_NESTED_DEPTH:
+        raise PublicSafetyError(f"ZIP recursion depth exceeds limit: {archive_relative}")
+    if len(contents) > MAX_ZIP_ARCHIVE_SIZE:
+        raise PublicSafetyError(f"ZIP archive exceeds size limit: {archive_relative}")
+
     try:
         with zipfile.ZipFile(io.BytesIO(contents)) as archive:
-            corrupt_member = archive.testzip()
-            if corrupt_member is not None:
-                relative = _member_relative_path(archive_relative, corrupt_member)
-                raise PublicSafetyError(f"corrupt ZIP member: {relative}")
+            members = archive.infolist()
+            if len(members) > MAX_ZIP_MEMBER_COUNT:
+                raise PublicSafetyError(f"ZIP member count exceeds limit: {archive_relative}")
             seen_members: set[str] = set()
-            for member in archive.infolist():
+            total_uncompressed_size = 0
+            files: list[zipfile.ZipInfo] = []
+            for member in members:
                 _validate_zip_member_path(archive_relative, member)
                 relative = _member_relative_path(archive_relative, member.filename)
                 if member.filename in seen_members:
@@ -241,9 +263,21 @@ def _iter_zip_texts(contents: bytes, archive_relative: str):
                     continue
                 if member.file_size > MAX_ZIP_MEMBER_SIZE:
                     raise PublicSafetyError(f"ZIP member exceeds size limit: {relative}")
-                yield relative, _decode_contents(
-                    archive.read(member), relative, Path(member.filename).suffix
-                )
+                total_uncompressed_size += member.file_size
+                if total_uncompressed_size > MAX_ZIP_TOTAL_UNCOMPRESSED_SIZE:
+                    raise PublicSafetyError(
+                        f"ZIP total uncompressed size exceeds limit: {archive_relative}"
+                    )
+                files.append(member)
+            for member in files:
+                relative = _member_relative_path(archive_relative, member.filename)
+                member_contents = archive.read(member)
+                if member.filename.lower().endswith(".zip") or _looks_like_zip(member_contents):
+                    yield from _iter_zip_texts(member_contents, relative, nested_depth + 1)
+                else:
+                    yield relative, _decode_contents(
+                        member_contents, relative, Path(member.filename).suffix
+                    )
     except PublicSafetyError:
         raise
     except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
@@ -279,7 +313,7 @@ def scan_tree(root: Path, public_email: str) -> list[Finding]:
     for path, relative_path in _iter_public_files(root):
         relative = relative_path.as_posix()
         contents = _read_file_bytes(path, relative)
-        if path.suffix.lower() == ".zip":
+        if path.suffix.lower() == ".zip" or _looks_like_zip(contents):
             text_sources = _iter_zip_texts(contents, relative)
         else:
             text_sources = ((relative, _decode_contents(contents, relative, path.suffix)),)
