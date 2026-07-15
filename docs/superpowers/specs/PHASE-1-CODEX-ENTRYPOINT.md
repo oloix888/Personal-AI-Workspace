@@ -61,7 +61,7 @@ Execute the plans in this exact order:
 8. `docs/superpowers/plans/2026-07-15-context-bootstrap-skill.md`
 9. `docs/superpowers/plans/2026-07-15-skill-pack-integration-prerelease-pilot.md`
 10. `docs/superpowers/plans/2026-07-15-private-emma-workspace-adapter-v6.md`
-11. Final whole-branch review against Apex #6–#17 and every binding specification above.
+11. Final whole-branch review against Apex #6–#18 and every binding specification above.
 
 ## Cross-cutting invariants
 
@@ -156,7 +156,7 @@ Codex may open a draft PR only after:
 - public/private scanner passes;
 - no cached self-certification remains;
 - no active task can be silently omitted;
-- all Apex #6–#17 requirements are traceable to code/tests/docs;
+- all Apex #6–#18 requirements are traceable to code/tests/docs;
 - no release publication workflow has been dispatched.
 
 The final response must include the draft PR URL, test summary, known limitations, artifact paths, and a clear statement that publication and private live activation remain unapproved.
