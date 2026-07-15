@@ -17,14 +17,12 @@ def test_validation_cli_help() -> None:
     assert "Validate built Personal AI Workspace skills" in result.stdout
 
 
-def test_private_scanner_covers_all_public_skill_pack_sources() -> None:
+def test_private_scanner_covers_the_public_repository_root() -> None:
     result = subprocess.run(
         [
             sys.executable,
             "skill-pack/scripts/scan_private_identifiers.py",
-            "skills",
-            "skill-pack",
-            ".github",
+            ".",
         ],
         cwd=ROOT,
         capture_output=True,
@@ -32,6 +30,4 @@ def test_private_scanner_covers_all_public_skill_pack_sources() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert "public-safe: skills" in result.stdout
-    assert "public-safe: skill-pack" in result.stdout
-    assert "public-safe: .github" in result.stdout
+    assert "public-safe: ." in result.stdout
