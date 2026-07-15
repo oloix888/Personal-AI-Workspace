@@ -140,6 +140,92 @@ def test_packaging_rejects_html_path_escape_before_creating_an_archive(
             "    handle.read()\n",
             "runtime file reference cannot be statically resolved",
         ),
+        (
+            "scripts/conditional-alias.py",
+            "read_external = open if enabled else print\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "scripts/dictionary-alias.py",
+            "callables = {'read': open}\n"
+            "read_external = callables['read']\n"
+            "read_external('../private-resource.txt')\n",
+            "runtime file reference escapes skill root",
+        ),
+        (
+            "scripts/builtins-get-alias.py",
+            "read_external = __builtins__.get('open')\n"
+            "read_external('../private-resource.txt')\n",
+            "dynamic callable lookup is not allowed",
+        ),
+        (
+            "scripts/nested-dictionary-alias.py",
+            "callables = {'nested': {'read': open}}\n"
+            "read_external = callables['nested']['read']\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "scripts/tuple-dictionary-alias.py",
+            "callables = ({'read': open},)\n"
+            "read_external = callables[0]['read']\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "scripts/chained-dictionary-get-alias.py",
+            "callables = {'nested': {'read': open}}\n"
+            "read_external = callables.get('nested').get('read')\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "scripts/lambda-alias.py",
+            "read_external = (lambda: open)()\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "scripts/lambda-identity-alias.py",
+            "read_external = (lambda item: item)(open)\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "scripts/lambda-identity-eval.py",
+            "compile_and_run = (lambda item: item)(eval)\n"
+            "compile_and_run('1 + 1')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "scripts/iterator-alias.py",
+            "read_external = next(iter({'read': open}.values()))\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "scripts/dict-constructor-alias.py",
+            "read_external = dict(read=open)['read']\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "scripts/dictionary-copy-alias.py",
+            "read_external = {'read': open}.copy()['read']\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "assets/escape-import.css",
+            '@import "../../private.css";\n',
+            "CSS import escapes skill root",
+        ),
+        (
+            "assets/escape-url.css",
+            ".hero { background-image: url('../../private.png'); }\n",
+            "CSS url escapes skill root",
+        ),
     ],
 )
 def test_packaging_rejects_all_runtime_boundary_bypasses_before_creating_an_archive(

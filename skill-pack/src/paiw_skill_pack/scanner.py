@@ -199,7 +199,16 @@ AUTH_SECRET_RE = re.compile(
             )
         )
         |
-        \bauthorization\b\s*[:=]\s*bearer\b\s+\S+
+        \bauthorization\b\s*[:=]\s*(?:bearer|basic)\b\s+\S+
+    )
+    """
+)
+MULTILINE_AUTH_SECRET_RE = re.compile(
+    r"""(?ix)
+    (?:
+        \bauthorization\b[ \t]*[:=][ \t]*(?:bearer|basic)\b[ \t]*\r?\n[ \t]+\S+
+        |
+        \bauthorization\b[ \t]*[:=][ \t]*\r?\n[ \t]*(?:bearer|basic)\b[ \t]+\S+
     )
     """
 )
@@ -213,10 +222,11 @@ NOTION_PRIVATE_RE = re.compile(
 GOOGLE_DRIVE_URL_RE = re.compile(
     r"(?i)(?:"
     r"https?://drive\.google\.com/(?:"
-    r"(?:drive/(?:u/\d+/)?folders|file/d)/[A-Za-z0-9_-]+"
+    r"(?:drive/(?:u/\d+/)?folders|file/(?:u/\d+/)?d)/[A-Za-z0-9_-]+"
     r"|(?:open|uc|drive/u/\d+/open)\?[^#\s]*\bid=[A-Za-z0-9_-]+"
     r")"
-    r"|https?://docs\.google\.com/document/d/[A-Za-z0-9_-]+(?:[/?#]|\b)"
+    r"|https?://docs\.google\.com/(?:document|spreadsheets|presentation)/(?:u/\d+/)?d/"
+    r"[A-Za-z0-9_-]+(?:[/?#]|\b)"
     r")"
 )
 GOOGLE_DRIVE_ID_RE = re.compile(
@@ -557,6 +567,19 @@ def _scan_line(
     return findings
 
 
+def _multiline_authentication_secret_findings(relative: str, text: str) -> list[Finding]:
+    """Find folded Authorization credentials while retaining a non-secret excerpt."""
+    findings: list[Finding] = []
+    lines = text.splitlines()
+    for match in MULTILINE_AUTH_SECRET_RE.finditer(text):
+        line_number = text.count("\n", 0, match.start()) + 1
+        excerpt = lines[line_number - 1].strip() if line_number <= len(lines) else "Authorization"
+        findings.append(
+            Finding(relative, line_number, "authentication_secret_literal", excerpt)
+        )
+    return findings
+
+
 def _normalise_structured_key(value: str) -> str:
     return re.sub(r"[^a-z0-9]", "", value.lower())
 
@@ -779,6 +802,7 @@ def _scan_file(
     findings: list[Finding] = []
     for text_relative, text, source_allows_historical_references in text_sources:
         findings.extend(_connector_response_findings(text_relative, text))
+        findings.extend(_multiline_authentication_secret_findings(text_relative, text))
         for line_number, line in enumerate(text.splitlines(), 1):
             findings.extend(
                 _scan_line(
@@ -789,7 +813,7 @@ def _scan_file(
                     source_allows_historical_references,
                 )
             )
-    return findings
+    return list(dict.fromkeys(findings))
 
 
 def scan_file(path: Path, public_email: str = PUBLIC_PROJECT_EMAIL) -> list[Finding]:

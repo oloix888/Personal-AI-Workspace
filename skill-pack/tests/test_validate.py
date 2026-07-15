@@ -503,6 +503,196 @@ def test_runtime_python_static_external_io_aliases_allow_in_root_paths(
 
 
 @pytest.mark.parametrize(
+    ("contents", "expected_error"),
+    [
+        (
+            "read_external = open if enabled else print\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "callables = {'read': open}\n"
+            "read_external = callables['read']\n"
+            "read_external('../private-resource.txt')\n",
+            "runtime file reference escapes skill root",
+        ),
+        (
+            "callables = {'read': open}\n"
+            "read_external = callables[key]\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "read_external = __builtins__.get('open')\n"
+            "read_external('../private-resource.txt')\n",
+            "dynamic callable lookup is not allowed",
+        ),
+        (
+            "compile_and_run = {'run': eval}['run']\n"
+            "compile_and_run('1 + 1')\n",
+            "dynamic code execution is not allowed",
+        ),
+        (
+            "compile_and_run = eval if enabled else print\n"
+            "compile_and_run('1 + 1')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "callables = {'nested': {'read': open}}\n"
+            "read_external = callables['nested']['read']\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "callables = ({'read': open},)\n"
+            "read_external = callables[0]['read']\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "callables = {'nested': {'read': open}}\n"
+            "read_external = callables.get('nested').get('read')\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "read_external = (lambda: open)()\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "factory = lambda: open\n"
+            "read_external = factory()\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "read_external = (lambda item: item)(open)\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "compile_and_run = (lambda item: item)(eval)\n"
+            "compile_and_run('1 + 1')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "read_external = next(iter({'read': open}.values()))\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "read_external = dict(read=open)['read']\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "read_external = {'read': open}.copy()['read']\n"
+            "read_external('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+    ],
+)
+def test_runtime_python_wrapped_monitored_aliases_fail_closed(
+    tmp_path: Path, contents: str, expected_error: str
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "scripts").mkdir()
+    (built / "scripts" / "wrapped-alias.py").write_text(contents, encoding="utf-8")
+
+    assert any(expected_error in error for error in validate_skill_root(built))
+
+
+def test_runtime_python_static_dictionary_alias_allows_in_root_path(tmp_path: Path) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "scripts").mkdir()
+    (built / "scripts" / "static-dictionary-alias.py").write_text(
+        "callables = {'read': open}\n"
+        "read_local = callables['read']\n"
+        "read_local('references/local.md')\n",
+        encoding="utf-8",
+    )
+
+    assert validate_skill_root(built) == []
+
+
+def test_runtime_python_static_dictionary_get_allows_in_root_path(tmp_path: Path) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "scripts").mkdir()
+    (built / "scripts" / "static-dictionary-get.py").write_text(
+        "callables = {'read': open}\n"
+        "read_local = callables.get('read')\n"
+        "read_local('references/local.md')\n",
+        encoding="utf-8",
+    )
+
+    assert validate_skill_root(built) == []
+
+
+@pytest.mark.parametrize(
+    ("contents", "expected_error"),
+    [
+        (
+            '@import "../../private.css";\n',
+            "CSS import escapes skill root",
+        ),
+        (
+            ".hero { background-image: url('../../private.png'); }\n",
+            "CSS url escapes skill root",
+        ),
+    ],
+)
+def test_css_references_cannot_escape_the_skill_root(
+    tmp_path: Path, contents: str, expected_error: str
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    assets = built / "assets"
+    assets.mkdir()
+    (assets / "style.css").write_text(contents, encoding="utf-8")
+
+    assert any(expected_error in error for error in validate_skill_root(built))
+
+
+def test_css_references_allow_existing_in_root_assets(tmp_path: Path) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    assets = built / "assets"
+    assets.mkdir()
+    (assets / "logo.svg").write_text("<svg></svg>\n", encoding="utf-8")
+    (assets / "base.css").write_text(".base {}\n", encoding="utf-8")
+    (assets / "style.css").write_text(
+        '@import "base.css";\n.hero { background-image: url("logo.svg"); }\n',
+        encoding="utf-8",
+    )
+
+    assert validate_skill_root(built) == []
+
+
+@pytest.mark.parametrize(
     "reference",
     [
         "[file-uri](file:///tmp/private.md)",

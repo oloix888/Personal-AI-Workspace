@@ -70,6 +70,24 @@ META_REFRESH_URL_RE = re.compile(
     r"(?:^|;)\s*url\s*=\s*(?:'(?P<single>[^']*)'|\"(?P<double>[^\"]*)\"|(?P<bare>[^;\s]*))",
     re.IGNORECASE,
 )
+CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+CSS_IMPORT_RE = re.compile(
+    r"""(?ix)
+    @import\s+
+    (?:
+        url\(\s*(?:'(?P<url_single>[^']*)'|\"(?P<url_double>[^\"]*)\"|(?P<url_bare>[^\s)]+))\s*\)
+        |
+        '(?P<single>[^']*)'
+        |
+        \"(?P<double>[^\"]*)\"
+    )
+    """
+)
+CSS_URL_RE = re.compile(
+    r"""(?ix)
+    \burl\(\s*(?:'(?P<single>[^']*)'|\"(?P<double>[^\"]*)\"|(?P<bare>[^\s)]+))\s*\)
+    """
+)
 STATIC_FILE_OPEN_CALLS = frozenset({"open", "builtins.open", "io.open", "os.open"})
 STATIC_FILE_COPY_CALLS = frozenset(
     {
@@ -81,7 +99,9 @@ STATIC_FILE_COPY_CALLS = frozenset(
     }
 )
 DYNAMIC_CODE_CALLS = frozenset({"eval", "exec", "builtins.eval", "builtins.exec"})
-DYNAMIC_LOOKUP_CALLS = frozenset({"getattr", "builtins.getattr"})
+DYNAMIC_LOOKUP_CALLS = frozenset(
+    {"getattr", "builtins.getattr", "builtins.get"}
+)
 DYNAMIC_RUNTIME_RESOLUTION_CALLS = frozenset(
     {
         "__import__",
@@ -225,6 +245,19 @@ def _html_meta_refresh_targets(text: str) -> list[str]:
     parser.feed(text)
     parser.close()
     return parser.meta_refresh_targets
+
+
+def _css_reference_targets(text: str) -> list[tuple[str, str]]:
+    """Return CSS import and asset targets without evaluating stylesheet code."""
+    uncommented = CSS_COMMENT_RE.sub("", text)
+    targets: list[tuple[str, str]] = []
+    for match in CSS_IMPORT_RE.finditer(uncommented):
+        target = next((value for value in match.groupdict().values() if value is not None), "")
+        targets.append((target, "CSS import"))
+    for match in CSS_URL_RE.finditer(uncommented):
+        target = next((value for value in match.groupdict().values() if value is not None), "")
+        targets.append((target, "CSS url"))
+    return targets
 
 
 def _is_local_or_host_filesystem_target(target: str, parsed_target: object) -> bool:
@@ -530,6 +563,7 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
         self.errors: list[str] = []
         self.bindings: dict[str, _StaticPythonPath | None] = {}
         self.symbols: dict[str, str | None] = {}
+        self.containers: dict[str, dict[str | None, str | None] | None] = {}
         self._reported: set[tuple[str, str | None]] = set()
 
     def _report(self, error: str, target: str | None = None) -> None:
@@ -571,6 +605,140 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
         if path.error:
             self._report(path.error, path.target)
 
+    @staticmethod
+    def _is_monitored_symbol(symbol: str | None) -> bool:
+        return symbol == UNRESOLVED_MONITORED_ALIAS or symbol in MONITORED_RUNTIME_CALLS
+
+    def _merge_symbol_candidates(self, *symbols: str | None) -> str | None:
+        """Merge wrapper alternatives while preserving monitored-call evidence.
+
+        An unmonitored expression remains unmonitored.  If a branch, container
+        entry, or wrapper could resolve to a monitored runtime callable but the
+        exact callable is not static, callers must reject it rather than losing
+        the evidence and accepting a boundary bypass.
+        """
+        if not symbols:
+            return None
+        if all(symbol == symbols[0] for symbol in symbols):
+            return symbols[0]
+        if any(self._is_monitored_symbol(symbol) for symbol in symbols):
+            return UNRESOLVED_MONITORED_ALIAS
+        return None
+
+    def _symbol_with_container_evidence(self, value: ast.AST) -> str | None:
+        """Retain monitored-call evidence nested inside an expression."""
+        symbols = [self._symbol_name(value)]
+        nested = self._container_symbols(value)
+        if nested is not None:
+            symbols.append(self._merge_symbol_candidates(*nested.values()))
+        return self._merge_symbol_candidates(*symbols)
+
+    def _container_symbols(self, node: ast.AST) -> dict[str | None, str | None] | None:
+        if isinstance(node, ast.Name):
+            return self.containers.get(node.id)
+        if not isinstance(node, (ast.Dict, ast.List, ast.Tuple)):
+            return None
+
+        if isinstance(node, ast.Dict):
+            entries: dict[str | None, str | None] = {}
+            for key, value in zip(node.keys, node.values, strict=True):
+                literal = _string_literal(key) if key is not None else None
+                entries[literal] = self._symbol_with_container_evidence(value)
+            return entries
+
+        return {
+            str(index): self._symbol_with_container_evidence(value)
+            for index, value in enumerate(node.elts)
+        }
+
+    def _symbol_from_container(
+        self, container: dict[str | None, str | None] | None, key: str | None
+    ) -> str | None:
+        if container is None:
+            return None
+        if key is not None and key in container:
+            return container[key]
+        if key is None and any(
+            self._is_monitored_symbol(symbol) for symbol in container.values()
+        ):
+            return UNRESOLVED_MONITORED_ALIAS
+        return self._merge_symbol_candidates(*container.values())
+
+    def _symbol_from_subscript(self, node: ast.Subscript) -> str | None:
+        if self._symbol_name(node.value) == "builtins":
+            return UNRESOLVED_MONITORED_ALIAS
+        key = _string_literal(node.slice)
+        if (
+            key is None
+            and isinstance(node.slice, ast.Constant)
+            and isinstance(node.slice.value, int)
+        ):
+            key = str(node.slice.value)
+        symbol = self._symbol_from_container(self._container_symbols(node.value), key)
+        if symbol is not None:
+            return symbol
+        base_symbol = self._symbol_name(node.value)
+        return (
+            UNRESOLVED_MONITORED_ALIAS
+            if self._is_monitored_symbol(base_symbol)
+            else None
+        )
+
+    def _symbol_from_dynamic_lookup(
+        self, node: ast.Call, call_name: str | None
+    ) -> str | None:
+        if call_name == "builtins.get":
+            attribute = _string_literal(node.args[0]) if node.args else None
+            candidate = f"builtins.{attribute}" if attribute else None
+        elif call_name in {"getattr", "builtins.getattr"}:
+            module = self._symbol_name(node.args[0]) if node.args else None
+            attribute = _string_literal(node.args[1]) if len(node.args) > 1 else None
+            candidate = f"{module}.{attribute}" if module and attribute else None
+        else:
+            return None
+        if candidate in MONITORED_RUNTIME_CALLS or candidate is None:
+            return UNRESOLVED_MONITORED_ALIAS
+        return None
+
+    def _symbol_from_call(self, node: ast.Call) -> str | None:
+        if isinstance(node.func, ast.Lambda):
+            symbols = [self._symbol_name(node.func.body)]
+            symbols.extend(
+                self._symbol_with_container_evidence(argument) for argument in node.args
+            )
+            return (
+                UNRESOLVED_MONITORED_ALIAS
+                if any(self._is_monitored_symbol(symbol) for symbol in symbols)
+                else None
+            )
+        if isinstance(node.func, ast.Attribute):
+            container = self._container_symbols(node.func.value)
+            receiver_symbol = self._symbol_name(node.func.value)
+            if node.func.attr == "get":
+                if container is not None:
+                    key = _string_literal(node.args[0]) if node.args else None
+                    return self._symbol_from_container(container, key)
+                if self._is_monitored_symbol(receiver_symbol):
+                    return UNRESOLVED_MONITORED_ALIAS
+            if node.func.attr in {"copy", "values", "items"}:
+                if container is not None and any(
+                    self._is_monitored_symbol(symbol) for symbol in container.values()
+                ):
+                    return UNRESOLVED_MONITORED_ALIAS
+                if self._is_monitored_symbol(receiver_symbol):
+                    return UNRESOLVED_MONITORED_ALIAS
+        call_name = self._symbol_name(node.func)
+        dynamic_lookup = self._symbol_from_dynamic_lookup(node, call_name)
+        if dynamic_lookup is not None:
+            return dynamic_lookup
+        return self._merge_symbol_candidates(
+            *(self._symbol_with_container_evidence(argument) for argument in node.args),
+            *(
+                self._symbol_with_container_evidence(keyword.value)
+                for keyword in node.keywords
+            ),
+        )
+
     def _bind(self, target: ast.AST, value: ast.AST) -> None:
         if isinstance(target, ast.Name):
             self.bindings[target.id] = _python_path_expression(
@@ -579,12 +747,29 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
             symbol = self._symbol_name(value)
             self.symbols[target.id] = (
                 symbol
-                if symbol in STATIC_ALIAS_MODULES or symbol in MONITORED_RUNTIME_CALLS
+                if symbol in STATIC_ALIAS_MODULES
+                or symbol in MONITORED_RUNTIME_CALLS
+                or symbol == UNRESOLVED_MONITORED_ALIAS
                 else None
             )
+            self.containers[target.id] = self._container_symbols(value)
 
     def _symbol_name(self, node: ast.AST) -> str | None:
         """Resolve direct and statically aliased module/callable spellings."""
+        if isinstance(node, ast.Lambda):
+            return (
+                UNRESOLVED_MONITORED_ALIAS
+                if self._is_monitored_symbol(self._symbol_name(node.body))
+                else None
+            )
+        if isinstance(node, ast.IfExp):
+            return self._merge_symbol_candidates(
+                self._symbol_name(node.body), self._symbol_name(node.orelse)
+            )
+        if isinstance(node, ast.Subscript):
+            return self._symbol_from_subscript(node)
+        if isinstance(node, ast.Call):
+            return self._symbol_from_call(node)
         name = _dotted_name(node)
         if name is None:
             return None
@@ -609,14 +794,28 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
         statements: list[ast.stmt],
         initial_bindings: dict[str, _StaticPythonPath | None],
         initial_symbols: dict[str, str | None],
-    ) -> tuple[dict[str, _StaticPythonPath | None], dict[str, str | None]]:
-        outer_bindings, outer_symbols = self.bindings, self.symbols
+        initial_containers: dict[str, dict[str | None, str | None] | None],
+    ) -> tuple[
+        dict[str, _StaticPythonPath | None],
+        dict[str, str | None],
+        dict[str, dict[str | None, str | None] | None],
+    ]:
+        outer_bindings, outer_symbols, outer_containers = (
+            self.bindings,
+            self.symbols,
+            self.containers,
+        )
         self.bindings = initial_bindings.copy()
         self.symbols = initial_symbols.copy()
+        self.containers = initial_containers.copy()
         for statement in statements:
             self.visit(statement)
-        result = (self.bindings, self.symbols)
-        self.bindings, self.symbols = outer_bindings, outer_symbols
+        result = (self.bindings, self.symbols, self.containers)
+        self.bindings, self.symbols, self.containers = (
+            outer_bindings,
+            outer_symbols,
+            outer_containers,
+        )
         return result
 
     @staticmethod
@@ -649,6 +848,25 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
                 merged[name] = None
         return merged
 
+    def _merge_containers(
+        self, *branches: dict[str, dict[str | None, str | None] | None]
+    ) -> dict[str, dict[str | None, str | None] | None]:
+        names = set().union(*(branch.keys() for branch in branches))
+        merged: dict[str, dict[str | None, str | None] | None] = {}
+        for name in names:
+            values = [branch.get(name) for branch in branches]
+            if all(value == values[0] for value in values):
+                merged[name] = values[0]
+            elif any(
+                value is not None
+                and any(self._is_monitored_symbol(symbol) for symbol in value.values())
+                for value in values
+            ):
+                merged[name] = {None: UNRESOLVED_MONITORED_ALIAS}
+            else:
+                merged[name] = None
+        return merged
+
     def _is_file_open_call(self, node: ast.Call) -> bool:
         return self._symbol_name(node.func) in STATIC_FILE_OPEN_CALLS
 
@@ -665,12 +883,17 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
         return self._symbol_name(node.func) in DYNAMIC_RUNTIME_RESOLUTION_CALLS
 
     def _validate_dynamic_lookup(self, node: ast.Call) -> None:
-        if not node.args:
-            return
-        module = self._symbol_name(node.args[0])
-        if module not in STATIC_RUNTIME_MODULES:
-            return
-        attribute = _string_literal(node.args[1]) if len(node.args) > 1 else None
+        call_name = self._symbol_name(node.func)
+        if call_name == "builtins.get":
+            module = "builtins"
+            attribute = _string_literal(node.args[0]) if node.args else None
+        else:
+            if not node.args:
+                return
+            module = self._symbol_name(node.args[0])
+            if module not in STATIC_RUNTIME_MODULES:
+                return
+            attribute = _string_literal(node.args[1]) if len(node.args) > 1 else None
         candidate = f"{module}.{attribute}" if attribute else None
         if candidate is None or candidate in MONITORED_RUNTIME_CALLS:
             self._report_static_policy("dynamic callable lookup is not allowed", module)
@@ -731,6 +954,7 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
         if isinstance(node.target, ast.Name):
             self.bindings[node.target.id] = None
             self.symbols[node.target.id] = None
+            self.containers[node.target.id] = None
 
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
         self.visit(node.value)
@@ -742,6 +966,7 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
             self.symbols[bound_name] = (
                 imported.name if imported.name in STATIC_ALIAS_MODULES else None
             )
+            self.containers[bound_name] = None
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         module = node.module or ""
@@ -755,56 +980,78 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
             self.symbols[bound_name] = (
                 candidate if candidate in MONITORED_RUNTIME_CALLS else None
             )
+            self.containers[bound_name] = None
 
     def visit_If(self, node: ast.If) -> None:
         self.visit(node.test)
-        initial_bindings, initial_symbols = self.bindings.copy(), self.symbols.copy()
-        body_bindings, body_symbols = self._visit_statements(
-            node.body, initial_bindings, initial_symbols
+        initial_bindings, initial_symbols, initial_containers = (
+            self.bindings.copy(),
+            self.symbols.copy(),
+            self.containers.copy(),
         )
-        else_bindings, else_symbols = self._visit_statements(
-            node.orelse, initial_bindings, initial_symbols
+        body_bindings, body_symbols, body_containers = self._visit_statements(
+            node.body, initial_bindings, initial_symbols, initial_containers
+        )
+        else_bindings, else_symbols, else_containers = self._visit_statements(
+            node.orelse, initial_bindings, initial_symbols, initial_containers
         )
         self.bindings = self._merge_bindings(body_bindings, else_bindings)
         self.symbols = self._merge_symbols(body_symbols, else_symbols)
+        self.containers = self._merge_containers(body_containers, else_containers)
 
     def visit_For(self, node: ast.For) -> None:
         self.visit(node.iter)
-        initial_bindings, initial_symbols = self.bindings.copy(), self.symbols.copy()
-        body_bindings, body_symbols = self._visit_statements(
-            node.body, initial_bindings, initial_symbols
+        initial_bindings, initial_symbols, initial_containers = (
+            self.bindings.copy(),
+            self.symbols.copy(),
+            self.containers.copy(),
+        )
+        body_bindings, body_symbols, body_containers = self._visit_statements(
+            node.body, initial_bindings, initial_symbols, initial_containers
         )
         self.bindings = self._merge_bindings(initial_bindings, body_bindings)
         self.symbols = self._merge_symbols(initial_symbols, body_symbols)
+        self.containers = self._merge_containers(initial_containers, body_containers)
         if node.orelse:
-            self.bindings, self.symbols = self._visit_statements(
-                node.orelse, self.bindings, self.symbols
+            self.bindings, self.symbols, self.containers = self._visit_statements(
+                node.orelse, self.bindings, self.symbols, self.containers
             )
 
     def visit_While(self, node: ast.While) -> None:
         self.visit(node.test)
-        initial_bindings, initial_symbols = self.bindings.copy(), self.symbols.copy()
-        body_bindings, body_symbols = self._visit_statements(
-            node.body, initial_bindings, initial_symbols
+        initial_bindings, initial_symbols, initial_containers = (
+            self.bindings.copy(),
+            self.symbols.copy(),
+            self.containers.copy(),
+        )
+        body_bindings, body_symbols, body_containers = self._visit_statements(
+            node.body, initial_bindings, initial_symbols, initial_containers
         )
         self.bindings = self._merge_bindings(initial_bindings, body_bindings)
         self.symbols = self._merge_symbols(initial_symbols, body_symbols)
+        self.containers = self._merge_containers(initial_containers, body_containers)
         if node.orelse:
-            self.bindings, self.symbols = self._visit_statements(
-                node.orelse, self.bindings, self.symbols
+            self.bindings, self.symbols, self.containers = self._visit_statements(
+                node.orelse, self.bindings, self.symbols, self.containers
             )
 
     def visit_Try(self, node: ast.Try) -> None:
-        initial_bindings, initial_symbols = self.bindings.copy(), self.symbols.copy()
-        normal_bindings, normal_symbols = self._visit_statements(
-            node.body, initial_bindings, initial_symbols
+        initial_bindings, initial_symbols, initial_containers = (
+            self.bindings.copy(),
+            self.symbols.copy(),
+            self.containers.copy(),
+        )
+        normal_bindings, normal_symbols, normal_containers = self._visit_statements(
+            node.body, initial_bindings, initial_symbols, initial_containers
         )
         if node.orelse:
-            normal_bindings, normal_symbols = self._visit_statements(
-                node.orelse, normal_bindings, normal_symbols
+            normal_bindings, normal_symbols, normal_containers = self._visit_statements(
+                node.orelse, normal_bindings, normal_symbols, normal_containers
             )
         handler_states = [
-            self._visit_statements(handler.body, initial_bindings, initial_symbols)
+            self._visit_statements(
+                handler.body, initial_bindings, initial_symbols, initial_containers
+            )
             for handler in node.handlers
         ]
         self.bindings = self._merge_bindings(
@@ -813,24 +1060,37 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
         self.symbols = self._merge_symbols(
             normal_symbols, *(state[1] for state in handler_states)
         )
+        self.containers = self._merge_containers(
+            normal_containers, *(state[2] for state in handler_states)
+        )
         if node.finalbody:
-            self.bindings, self.symbols = self._visit_statements(
-                node.finalbody, self.bindings, self.symbols
+            self.bindings, self.symbols, self.containers = self._visit_statements(
+                node.finalbody, self.bindings, self.symbols, self.containers
             )
 
     def visit_Match(self, node: ast.Match) -> None:
         self.visit(node.subject)
-        initial_bindings, initial_symbols = self.bindings.copy(), self.symbols.copy()
+        initial_bindings, initial_symbols, initial_containers = (
+            self.bindings.copy(),
+            self.symbols.copy(),
+            self.containers.copy(),
+        )
         branches = [
-            self._visit_statements(case.body, initial_bindings, initial_symbols)
+            self._visit_statements(
+                case.body, initial_bindings, initial_symbols, initial_containers
+            )
             for case in node.cases
         ]
         self.bindings = self._merge_bindings(initial_bindings, *(state[0] for state in branches))
         self.symbols = self._merge_symbols(initial_symbols, *(state[1] for state in branches))
+        self.containers = self._merge_containers(
+            initial_containers, *(state[2] for state in branches)
+        )
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self.symbols[node.name] = None
-        self._visit_statements(node.body, self.bindings, self.symbols)
+        self.containers[node.name] = None
+        self._visit_statements(node.body, self.bindings, self.symbols, self.containers)
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
@@ -839,7 +1099,8 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         self.symbols[node.name] = None
-        self._visit_statements(node.body, self.bindings, self.symbols)
+        self.containers[node.name] = None
+        self._visit_statements(node.body, self.bindings, self.symbols, self.containers)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         self._check_expression(node)
@@ -999,6 +1260,12 @@ def validate_skill_root(root: Path) -> list[str]:
                 errors.append(error)
         for target in _html_meta_refresh_targets(text):
             error = _validate_relative_target(root, html, target, "meta refresh")
+            if error:
+                errors.append(error)
+    for stylesheet in sorted(root.rglob("*.css")):
+        text = stylesheet.read_text(encoding="utf-8")
+        for target, reference_kind in _css_reference_targets(text):
+            error = _validate_relative_target(root, stylesheet, target, reference_kind)
             if error:
                 errors.append(error)
     for config in sorted(

@@ -270,6 +270,7 @@ def test_scanner_allows_empty_secret_assignment(tmp_path: Path) -> None:
         "/open?id=1AbCdEfGhIjKlMnOp",
         "/uc?id=1AbCdEfGhIjKlMnOp",
         "/drive/u/0/open?id=1AbCdEfGhIjKlMnOp",
+        "/file/u/0/d/1AbCdEfGhIjKlMnOp/view",
     ],
 )
 def test_scanner_detects_google_drive_query_url_forms(tmp_path: Path, path: str) -> None:
@@ -283,16 +284,46 @@ def test_scanner_detects_google_drive_query_url_forms(tmp_path: Path, path: str)
     assert "google_drive_identifier" in rules
 
 
-def test_scanner_detects_google_docs_document_urls(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/document/d/1AbCdEfGhIjKlMnOp/edit",
+        "/document/u/0/d/1AbCdEfGhIjKlMnOp/edit",
+        "/spreadsheets/d/1AbCdEfGhIjKlMnOp/edit",
+        "/spreadsheets/u/0/d/1AbCdEfGhIjKlMnOp/edit",
+        "/presentation/d/1AbCdEfGhIjKlMnOp/edit",
+        "/presentation/u/0/d/1AbCdEfGhIjKlMnOp/edit",
+    ],
+)
+def test_scanner_detects_google_docs_document_urls(tmp_path: Path, path: str) -> None:
     docs_host = "docs.google" + ".com"
-    identifier = "1AbCdEfGhIjKlMnOp"
     (tmp_path / "private-url.txt").write_text(
-        f"https://{docs_host}/document/d/{identifier}/edit\n", encoding="utf-8"
+        f"https://{docs_host}{path}\n", encoding="utf-8"
     )
 
     rules = {finding.rule for finding in scan_tree(tmp_path, "michal24749@gmail.com")}
 
     assert "google_drive_identifier" in rules
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        "Authorization: " + "Ba" + "sic c3ludGhldGljOnNlY3JldA==\n",
+        "Authorization: " + "Be" + "arer\n  synthetic-token\n",
+        "Authorization:\n  " + "Be" + "arer synthetic-token\n",
+    ],
+)
+def test_scanner_detects_basic_and_multiline_bearer_credentials(
+    tmp_path: Path, contents: str
+) -> None:
+    (tmp_path / "credentials.txt").write_text(contents, encoding="utf-8")
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    assert {(item.path, item.line, item.rule) for item in findings} == {
+        ("credentials.txt", 1, "authentication_secret_literal")
+    }
 
 
 def test_scanner_detects_synthetic_notion_dot_com_identifier(tmp_path: Path) -> None:
