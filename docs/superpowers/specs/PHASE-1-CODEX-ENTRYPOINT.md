@@ -28,7 +28,7 @@ Read all of these before implementation:
 
 1. `docs/superpowers/specs/2026-07-15-personal-ai-workspace-skill-pack-phase-1-design.md`
 2. `docs/superpowers/specs/2026-07-15-phase-1-release-scope-audit.md`
-3. `docs/superpowers/specs/2026-07-15-one-time-external-disclosure-consent-addendum.md`
+3. `docs/superpowers/specs/2026-07-15-one-time-disclosure-consent-addendum.md`
 4. `docs/superpowers/specs/2026-07-15-constitution-truncation-safety-addendum.md`
 5. `docs/superpowers/specs/2026-07-15-capability-catalog-plugin-orchestration-design.md`
 6. `docs/superpowers/specs/2026-07-15-autonomous-memory-capture-design.md`
