@@ -56,6 +56,50 @@ def test_packaging_rejects_an_invalid_skill_tree_before_creating_an_archive(
     assert not destination.exists()
 
 
+def test_packaging_rejects_runtime_python_path_escape_before_creating_an_archive(
+    tmp_path: Path,
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path / "build",
+        "0.1.0-beta.1",
+    )
+    (built / "scripts").mkdir()
+    (built / "scripts" / "escape.py").write_text(
+        "from pathlib import Path\n"
+        'SHARED = Path(__file__).resolve().parents[2] / "_shared"\n',
+        encoding="utf-8",
+    )
+    destination = tmp_path / "minimal-skill.zip"
+
+    with pytest.raises(ValueError, match="runtime file reference escapes skill root"):
+        create_deterministic_zip(built, destination)
+
+    assert not destination.exists()
+
+
+def test_packaging_rejects_html_path_escape_before_creating_an_archive(
+    tmp_path: Path,
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path / "build",
+        "0.1.0-beta.1",
+    )
+    (built / "references" / "escape.html").write_text(
+        '<a href="../../_shared/contract/governance.md">outside</a>\n',
+        encoding="utf-8",
+    )
+    destination = tmp_path / "minimal-skill.zip"
+
+    with pytest.raises(ValueError, match="link escapes skill root"):
+        create_deterministic_zip(built, destination)
+
+    assert not destination.exists()
+
+
 @pytest.mark.parametrize(
     ("filename", "contents"),
     [

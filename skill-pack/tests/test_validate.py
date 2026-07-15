@@ -84,6 +84,118 @@ def test_external_mailto_fragment_and_internal_markdown_html_links_are_allowed(
     assert validate_skill_root(built) == []
 
 
+def test_html_and_structured_config_references_cannot_escape_skill_root(
+    tmp_path: Path,
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "references" / "escape.html").write_text(
+        '<a href="../../_shared/contract/governance.md">outside</a>\n',
+        encoding="utf-8",
+    )
+    (built / "agents" / "runtime.yaml").write_text(
+        "template: ../../_shared/contract/governance.md\n",
+        encoding="utf-8",
+    )
+    (built / "runtime.json").write_text(
+        '{"template": "../../_shared/contract/governance.md"}\n',
+        encoding="utf-8",
+    )
+
+    errors = validate_skill_root(built)
+
+    assert any("escape.html link escapes skill root" in error for error in errors)
+    assert any("runtime.yaml file reference escapes skill root" in error for error in errors)
+    assert any("runtime.json file reference escapes skill root" in error for error in errors)
+
+
+def test_in_root_html_and_structured_config_references_are_allowed(tmp_path: Path) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "references" / "index.html").write_text(
+        '<a href="local.md">local</a>\n', encoding="utf-8"
+    )
+    (built / "agents" / "runtime.yaml").write_text(
+        "template: ../references/local.md\n", encoding="utf-8"
+    )
+    (built / "runtime.json").write_text(
+        '{"template": "references/local.md"}\n', encoding="utf-8"
+    )
+
+    assert validate_skill_root(built) == []
+
+
+def test_runtime_python_path_escape_is_rejected_before_packaging(tmp_path: Path) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "scripts").mkdir()
+    (built / "scripts" / "escape.py").write_text(
+        "from pathlib import Path\n"
+        'SHARED = Path(__file__).resolve().parents[2] / "_shared"\n',
+        encoding="utf-8",
+    )
+
+    assert any(
+        "scripts/escape.py runtime file reference escapes skill root" in error
+        for error in validate_skill_root(built)
+    )
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        "from pathlib import Path\nPRIVATE = Path('/tmp/private-resource')\n",
+        "with open('../private-resource.txt', encoding='utf-8') as handle:\n    handle.read()\n",
+    ],
+)
+def test_runtime_python_absolute_and_parent_literal_paths_are_rejected(
+    tmp_path: Path, contents: str
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "scripts").mkdir()
+    (built / "scripts" / "escape.py").write_text(contents, encoding="utf-8")
+
+    assert any(
+        "scripts/escape.py runtime file reference" in error
+        for error in validate_skill_root(built)
+    )
+
+
+def test_in_root_runtime_python_path_reference_is_allowed(tmp_path: Path) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "scripts").mkdir()
+    (built / "scripts" / "read_local.py").write_text(
+        "from pathlib import Path\n"
+        'LOCAL = Path(__file__).resolve().parents[1] / "references" / "local.md"\n'
+        "contents = LOCAL.read_text(encoding=\"utf-8\")\n",
+        encoding="utf-8",
+    )
+
+    assert validate_skill_root(built) == []
+
+
 @pytest.mark.parametrize(
     "reference",
     [
