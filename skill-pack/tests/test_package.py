@@ -10,6 +10,17 @@ from paiw_skill_pack.validate import validate_skill_root
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).parent / "fixtures"
+REVIEWER_SYNTHETIC_PRIVATE_JSON = (
+    '{"authori'
+    'zation":"Basic c3ludGhldGljOnNlY3JldA==","api_'
+    'key":"synthetic-secret","notion_'
+    'page_'
+    'id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","drive_'
+    'folder_'
+    'id":"1AbCdEfGhIjKlMnOp","drive_'
+    'url":"https://drive.google'
+    '.com/a/example.invalid/file/d/1AbCdEfGhIjKlMnOp/view"}'
+)
 
 
 def test_zip_is_reproducible(tmp_path: Path) -> None:
@@ -290,6 +301,24 @@ def test_packaging_rejects_private_input_in_an_otherwise_valid_skill_tree(
     destination = tmp_path / "minimal-skill.zip"
 
     with pytest.raises(PublicSafetyError, match="private-input.md:1"):
+        create_deterministic_zip(built, destination)
+
+    assert not destination.exists()
+
+
+def test_packaging_rejects_reviewers_quoted_private_json_before_creating_an_archive(
+    tmp_path: Path,
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path / "build",
+        "0.1.0-beta.1",
+    )
+    (built / "private.json").write_text(REVIEWER_SYNTHETIC_PRIVATE_JSON, encoding="utf-8")
+    destination = tmp_path / "minimal-skill.zip"
+
+    with pytest.raises(PublicSafetyError, match="private.json:1"):
         create_deterministic_zip(built, destination)
 
     assert not destination.exists()

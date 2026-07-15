@@ -175,21 +175,25 @@ AUTH_SECRET_RE = re.compile(
     r"""(?ix)
     (?:
         (?:
-            \b(?:
-                password|
-                one[- ]time[ -]?code|
-                reset[ -]?link|
-                api[ _-]?key|
-                access[ _-]?token|
-                private[ _-]?key|
-                session[ _-]?cookie|
-                client[ _-]?secret|
-                secret
-            )\b
-        |
-        (?<![A-Za-z0-9_-])token\b
-        |
-        (?<![A-Za-z0-9_-])cookie\b
+            (?:["']?\s*)?
+            (?:
+                \b(?:
+                    password|
+                    one[- ]time[ -]?code|
+                    reset[ -]?link|
+                    api[ _-]?key|
+                    access[ _-]?token|
+                    private[ _-]?key|
+                    session[ _-]?cookie|
+                    client[ _-]?secret|
+                    secret
+                )\b
+            |
+            (?<![A-Za-z0-9_-])token\b
+            |
+            (?<![A-Za-z0-9_-])cookie\b
+            )
+            (?:\s*["'])?
         )\s*[:=]\s*
         (?=
             (?:
@@ -199,16 +203,19 @@ AUTH_SECRET_RE = re.compile(
             )
         )
         |
-        \bauthorization\b\s*[:=]\s*(?:bearer|basic)\b\s+\S+
+        (?:["']?\s*)?\bauthorization\b(?:\s*["'])?\s*[:=]\s*
+        (?:bearer|basic)\b\s+\S+
     )
     """
 )
 MULTILINE_AUTH_SECRET_RE = re.compile(
     r"""(?ix)
     (?:
-        \bauthorization\b[ \t]*[:=][ \t]*(?:bearer|basic)\b[ \t]*\r?\n[ \t]+\S+
+        (?:["']?\s*)?\bauthorization\b(?:\s*["'])?[ \t]*[:=][ \t]*
+        (?:bearer|basic)\b[ \t]*\r?\n[ \t]+\S+
         |
-        \bauthorization\b[ \t]*[:=][ \t]*\r?\n[ \t]*(?:bearer|basic)\b[ \t]+\S+
+        (?:["']?\s*)?\bauthorization\b(?:\s*["'])?[ \t]*[:=][ \t]*
+        \r?\n[ \t]*(?:bearer|basic)\b[ \t]+\S+
     )
     """
 )
@@ -217,21 +224,23 @@ NOTION_PRIVATE_RE = re.compile(
     r"https?://(?:www\.)?notion\.com/[^\s)]*(?<![0-9a-f-])(?:[0-9a-f]{32}|"
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
     r"(?![0-9a-f-])(?=[/?#\s)'\".,;:]|$)|"
-    r"\b(?:notion[_ -]?)?(?:page|database|view)[_ -]?id\b\s*[:=]\s*[\"']?[0-9a-f-]{32,})"
+    r"(?:[\"']?\s*)?\b(?:notion[_ -]?)?(?:page|database|view)[_ -]?id\b"
+    r"(?:\s*[\"'])?\s*[:=]\s*[\"']?[0-9a-f-]{32,})"
 )
 GOOGLE_DRIVE_URL_RE = re.compile(
     r"(?i)(?:"
-    r"https?://drive\.google\.com/(?:"
+    r"https?://drive\.google\.com/(?:a/[A-Za-z0-9.-]+/)?(?:"
     r"(?:drive/(?:u/\d+/)?folders|file/(?:u/\d+/)?d)/[A-Za-z0-9_-]+"
     r"|(?:open|uc|drive/u/\d+/open)\?[^#\s]*\bid=[A-Za-z0-9_-]+"
     r")"
-    r"|https?://docs\.google\.com/(?:document|spreadsheets|presentation)/(?:u/\d+/)?d/"
+    r"|https?://docs\.google\.com/(?:a/[A-Za-z0-9.-]+/)?"
+    r"(?:document|spreadsheets|presentation)/(?:u/\d+/)?d/"
     r"[A-Za-z0-9_-]+(?:[/?#]|\b)"
     r")"
 )
 GOOGLE_DRIVE_ID_RE = re.compile(
-    r"(?i)\b(?:folder[_ -]?id|drive[_ -]?(?:folder|file)?[_ -]?id|google[_ -]?drive[_ -]?id)\b"
-    r"\s*[:=]\s*[\"']?[A-Za-z0-9_-]{10,}"
+    r"(?i)(?:[\"']?\s*)?\b(?:folder[_ -]?id|drive[_ -]?(?:folder|file)?[_ -]?id|"
+    r"google[_ -]?drive[_ -]?id)\b(?:\s*[\"'])?\s*[:=]\s*[\"']?[A-Za-z0-9_-]{10,}"
 )
 NOTION_RESPONSE_OBJECTS = frozenset({"page", "database", "block"})
 NOTION_IDENTIFIER_RE = re.compile(

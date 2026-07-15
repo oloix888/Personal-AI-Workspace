@@ -5,7 +5,7 @@ import zipfile
 import pytest
 
 import paiw_skill_pack.scanner as scanner
-from paiw_skill_pack.scanner import PublicSafetyError, scan_tree
+from paiw_skill_pack.scanner import PublicSafetyError, scan_file, scan_tree
 
 FIXTURES = Path(__file__).parent / "fixtures" / "scanner"
 
@@ -47,6 +47,120 @@ def test_scanner_detects_private_notion_and_drive_references_in_toml(tmp_path: P
 
     assert "notion_private_url" in rules
     assert "google_drive_identifier" in rules
+
+
+def _join(*parts: str) -> str:
+    return "".join(parts)
+
+
+def _reviewer_synthetic_private_json() -> str:
+    """Generate the review fixture without making the repository scanner flag its test source."""
+    fields = (
+        (_join("authori", "zation"), "Basic c3ludGhldGljOnNlY3JldA=="),
+        (_join("api_", "key"), "synthetic-secret"),
+        (_join("notion_", "page_id"), "a" * 32),
+        (_join("drive_", "folder_id"), "1AbCdEfGhIjKlMnOp"),
+        (
+            _join("drive_", "url"),
+            _join(
+                "https://drive.google",
+                ".com/a/example.invalid/file/d/1AbCdEfGhIjKlMnOp/view",
+            ),
+        ),
+    )
+    return "{" + ",".join(f'"{key}":"{value}"' for key, value in fields) + "}"
+
+
+def _quoted_sensitive_payload(
+    separator: str, quote_choices: tuple[str, ...], wrap_in_braces: bool
+) -> str:
+    fields = (
+        (_join("authori", "zation"), "Bearer synthetic-access-token"),
+        (_join("api_", "key"), "synthetic-api-key"),
+        (_join("client_", "secret"), "synthetic-client-secret"),
+        (_join("notion_", "database_id"), "b" * 32),
+        (_join("notion_", "view_id"), "323e4567-e89b-12d3-a456-426614174000"),
+        (_join("drive_", "file_id"), "1QrStUvWxYz012345"),
+        (
+            _join("drive_", "url"),
+            _join(
+                "https://docs.google",
+                ".com/a/example.invalid/document/d/1QrStUvWxYz012345/edit",
+            ),
+        ),
+    )
+    rendered_fields = []
+    for index, (key, value) in enumerate(fields):
+        quote = quote_choices[index % len(quote_choices)]
+        suffix = "," if wrap_in_braces and index + 1 < len(fields) else ""
+        rendered_fields.append(f"  {quote}{key}{quote}{separator} {quote}{value}{quote}{suffix}")
+    body = "\n".join(rendered_fields)
+    return f"{{\n{body}\n}}\n" if wrap_in_braces else f"{body}\n"
+
+
+def test_scanner_rejects_reviewers_quoted_private_json_in_source_and_zip(tmp_path: Path) -> None:
+    """Quoted JSON keys must not bypass source or distributable-package scans."""
+    payload = _reviewer_synthetic_private_json()
+    source = tmp_path / "private.json"
+    source.write_text(payload, encoding="utf-8")
+    archive_path = tmp_path / "artifact.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("config/private.json", payload)
+
+    source_rules = {finding.rule for finding in scan_file(source)}
+    archive_rules = {finding.rule for finding in scan_file(archive_path)}
+
+    expected_rules = {
+        "authentication_secret_literal",
+        "notion_private_url",
+        "google_drive_identifier",
+    }
+    assert expected_rules <= source_rules
+    assert expected_rules <= archive_rules
+
+
+@pytest.mark.parametrize(
+    ("filename", "separator", "quote_choices", "wrap_in_braces"),
+    [
+        ("private.json", ":", ('"',), True),
+        ("private.yaml", ":", ('"', "'"), False),
+        ("private.toml", "=", ('"', "'"), False),
+    ],
+)
+def test_scanner_rejects_quoted_sensitive_keys_across_structured_text_formats(
+    tmp_path: Path,
+    filename: str,
+    separator: str,
+    quote_choices: tuple[str, ...],
+    wrap_in_braces: bool,
+) -> None:
+    payload = _quoted_sensitive_payload(separator, quote_choices, wrap_in_braces)
+    (tmp_path / filename).write_text(payload, encoding="utf-8")
+
+    rules = {finding.rule for finding in scan_tree(tmp_path, "michal24749@gmail.com")}
+
+    assert {
+        "authentication_secret_literal",
+        "notion_private_url",
+        "google_drive_identifier",
+    } <= rules
+
+
+def test_scanner_allows_generic_quoted_structured_values_without_private_context(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "generic.json").write_text(
+        "{\n"
+        '  "authorization_status": "enabled",\n'
+        '  "api_keys": ["documentation"],\n'
+        '  "client_secret_hint": "configured elsewhere",\n'
+        '  "notion_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",\n'
+        '  "file_id": "1QrStUvWxYz012345"\n'
+        "}\n",
+        encoding="utf-8",
+    )
+
+    assert scan_tree(tmp_path, "michal24749@gmail.com") == []
 
 
 def test_scanner_detects_structured_connector_response_ids_without_flagging_unrelated_uuids(
