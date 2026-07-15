@@ -27,4 +27,4 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -e '.[dev]'
       - run: python -m pytest -v
-      - run: python skill-pack/scripts/scan_private_identifiers.py skills
+      - run: python skill-pack/scripts/scan_private_identifiers.py skills skill-pack .github

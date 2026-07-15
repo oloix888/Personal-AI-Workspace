@@ -24,6 +24,6 @@ def test_compatibility_manifest_loads() -> None:
         ROOT / "skills/_shared/contract/compatibility.json"
     )
     assert manifest.skill_pack_version == "0.1.0-beta.1"
-    assert manifest.target_framework_version == "1.5.1"
+    assert manifest.target_framework_version == "1.6.0"
     assert manifest.supported_framework_versions[0] == "1.0"
-    assert manifest.supported_framework_versions[-1] == "1.5.1"
+    assert manifest.supported_framework_versions[-1] == "1.6.0"

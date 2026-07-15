@@ -1,5 +1,7 @@
 interface:
   display_name: "Minimal Skill"
   short_description: "Builder fixture"
+  brand_color: "#123456"
+  default_prompt: "Build the minimal fixture safely."
 policy:
   allow_implicit_invocation: false

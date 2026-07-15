@@ -37,6 +37,23 @@ def test_capability_report_rejects_invented_state() -> None:
         )
 
 
+def test_capability_report_rejects_invalid_generated_at_format() -> None:
+    with pytest.raises(ValidationError):
+        validate_payload(
+            "capability-report",
+            {
+                "generated_at": "2026-13-40T25:61:61Z",
+                "capabilities": [
+                    {
+                        "capability": "notion.content.read",
+                        "state": "AVAILABLE_READ_ONLY",
+                        "detail": "Read-only connector",
+                    }
+                ],
+            },
+        )
+
+
 def test_context_briefing_requires_coverage() -> None:
     with pytest.raises(ValidationError):
         validate_payload(

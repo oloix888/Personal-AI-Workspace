@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, FormatChecker
 
 ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_DIR = ROOT / "skills" / "_shared" / "schemas"
@@ -16,4 +16,6 @@ def load_schema(name: str) -> dict[str, Any]:
 
 
 def validate_payload(name: str, payload: dict[str, Any]) -> None:
-    Draft202012Validator(load_schema(name)).validate(payload)
+    Draft202012Validator(
+        load_schema(name), format_checker=FormatChecker()
+    ).validate(payload)

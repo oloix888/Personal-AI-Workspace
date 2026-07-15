@@ -14,6 +14,6 @@ python -m pytest
 ```bash
 python skill-pack/scripts/build_skill_pack.py --source skills/personal-ai-workspace-installer-upgrader --version 0.1.0-beta.1
 python skill-pack/scripts/validate_skill_pack.py skill-pack/build/personal-ai-workspace-installer-upgrader
-python skill-pack/scripts/scan_private_identifiers.py skill-pack/build
+python skill-pack/scripts/scan_private_identifiers.py skills skill-pack .github
 python skill-pack/scripts/package_skill_pack.py skill-pack/build/personal-ai-workspace-installer-upgrader
 ```

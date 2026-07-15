@@ -11,11 +11,12 @@ from paiw_skill_pack.scanner import assert_public_safe
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Scan public Skill Pack files for private data")
-    parser.add_argument("root", type=Path)
+    parser.add_argument("roots", type=Path, nargs="+")
     parser.add_argument("--public-email", default="michal24749@gmail.com")
     args = parser.parse_args()
-    assert_public_safe(args.root, args.public_email)
-    print(f"public-safe: {args.root}")
+    for root in args.roots:
+        assert_public_safe(root, args.public_email)
+        print(f"public-safe: {root}")
     return 0
 
 
