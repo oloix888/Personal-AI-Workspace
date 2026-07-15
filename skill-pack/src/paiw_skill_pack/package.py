@@ -11,6 +11,22 @@ from .validate import assert_valid_skill
 FIXED_TIMESTAMP = (2026, 7, 15, 0, 0, 0)
 
 
+def _assert_unique_artifact_names(names: list[str]) -> None:
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+    for name in names:
+        if name in seen:
+            duplicates.add(name)
+        seen.add(name)
+    if duplicates:
+        raise ValueError(f"duplicate artifact/checksum name: {min(duplicates)}")
+
+
+def assert_unique_root_artifact_names(roots: list[Path]) -> None:
+    """Reject root-name collisions before packaging can overwrite an artifact."""
+    _assert_unique_artifact_names([f"{root.name}.zip" for root in roots])
+
+
 def _write_deterministic_zip(skill_root: Path, destination: Path) -> None:
     with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in sorted(item for item in skill_root.rglob("*") if item.is_file()):
@@ -55,6 +71,7 @@ def create_deterministic_zip(
 
 
 def write_checksums(files: list[Path], destination: Path) -> Path:
+    _assert_unique_artifact_names([path.name for path in files])
     destination.parent.mkdir(parents=True, exist_ok=True)
     lines = []
     for path in sorted(files, key=lambda item: item.name):

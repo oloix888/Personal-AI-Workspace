@@ -59,3 +59,39 @@ def test_build_rejects_file_and_directory_symlinks_in_input_trees(
 
     with pytest.raises(ValueError, match=rf"{tree_name} tree contains symlink: linked-input"):
         build_skill(source_root, shared_root, tmp_path / "build", "0.1.0-beta.1")
+
+
+@pytest.mark.parametrize("destination_kind", ["source", "shared"])
+def test_build_rejects_destination_overlap_before_removing_any_input(
+    tmp_path: Path, destination_kind: str
+) -> None:
+    repository_root = tmp_path / "repository"
+    source_root = repository_root / "minimal-skill"
+    shared_root = repository_root / "skills" / "_shared"
+    shutil.copytree(FIXTURES / "minimal-skill", source_root)
+    shutil.copytree(ROOT / "skills" / "_shared", shared_root)
+    shutil.copy2(ROOT / "LICENSE", repository_root / "LICENSE")
+    shutil.copy2(ROOT / "NOTICE", repository_root / "NOTICE")
+    source_marker = source_root / "source-marker.txt"
+    shared_marker = shared_root / "shared-marker.txt"
+    source_marker.write_text("preserve source", encoding="utf-8")
+    shared_marker.write_text("preserve shared", encoding="utf-8")
+    destination_root = source_root.parent if destination_kind == "source" else shared_root
+
+    with pytest.raises(ValueError, match="build paths overlap"):
+        build_skill(source_root, shared_root, destination_root, "0.1.0-beta.1")
+
+    assert source_marker.read_text(encoding="utf-8") == "preserve source"
+    assert shared_marker.read_text(encoding="utf-8") == "preserve shared"
+
+
+def test_build_rejects_source_and_shared_overlap_before_building(tmp_path: Path) -> None:
+    source_root = tmp_path / "minimal-skill"
+    shutil.copytree(FIXTURES / "minimal-skill", source_root)
+    marker = source_root / "source-marker.txt"
+    marker.write_text("preserve source", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="build paths overlap: source and shared"):
+        build_skill(source_root, source_root, tmp_path / "build", "0.1.0-beta.1")
+
+    assert marker.read_text(encoding="utf-8") == "preserve source"

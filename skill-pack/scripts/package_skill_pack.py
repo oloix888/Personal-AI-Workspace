@@ -6,7 +6,11 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from paiw_skill_pack.package import create_deterministic_zip, write_checksums
+from paiw_skill_pack.package import (
+    assert_unique_root_artifact_names,
+    create_deterministic_zip,
+    write_checksums,
+)
 
 
 def main() -> int:
@@ -14,6 +18,7 @@ def main() -> int:
     parser.add_argument("roots", type=Path, nargs="+")
     parser.add_argument("--output", type=Path, default=Path("skill-pack/dist"))
     args = parser.parse_args()
+    assert_unique_root_artifact_names(args.roots)
     args.output.mkdir(parents=True, exist_ok=True)
     archives = [
         create_deterministic_zip(root, args.output / f"{root.name}.zip")

@@ -260,14 +260,17 @@ PEOPLE_SENSITIVE_FIELDS = frozenset(
     }
 )
 STRUCTURED_FENCE_RE = re.compile(
-    r"(?ms)^[ \t]*```(?:json|yaml|yml)[ \t]*\r?$\n(.*?)^[ \t]*```[ \t]*\r?$"
+    r"(?ms)^[ \t]*```(?P<format>json|yaml|yml)[ \t]*\r?$\n"
+    r"(?P<payload>.*?)^[ \t]*```[ \t]*\r?$"
 )
+STRUCTURED_YAML_FILE_SUFFIXES = frozenset({".yaml", ".yml"})
 PRIVATE_MANIFEST_RE = re.compile(r"\b" + re.escape(PRIVATE_MANIFEST) + r"\b", re.IGNORECASE)
 ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
 # Archive inspection is deliberately bounded. Limits apply to each archive in
 # a nested chain so untrusted public artifacts cannot consume unbounded memory
 # or decompression work while the scanner fails closed.
 MAX_ZIP_ARCHIVE_SIZE = 50 * 1024 * 1024
+MAX_SCANNED_FILE_SIZE = MAX_ZIP_ARCHIVE_SIZE
 MAX_ZIP_MEMBER_COUNT = 1_024
 MAX_ZIP_MEMBER_SIZE = 10 * 1024 * 1024
 MAX_ZIP_TOTAL_UNCOMPRESSED_SIZE = 50 * 1024 * 1024
@@ -338,6 +341,16 @@ def _iter_public_paths(root: Path):
 
 
 def _read_file_bytes(path: Path, relative: str) -> bytes:
+    try:
+        metadata = path.stat()
+    except OSError as exc:
+        raise PublicSafetyError(f"unable to inspect file: {relative}") from exc
+    if not stat.S_ISREG(metadata.st_mode):
+        raise PublicSafetyError(f"scan target is not a regular file: {relative}")
+    if metadata.st_size > MAX_SCANNED_FILE_SIZE:
+        raise PublicSafetyError(f"file exceeds size limit: {relative}")
+    if path.suffix.lower() == ".zip" and metadata.st_size > MAX_ZIP_ARCHIVE_SIZE:
+        raise PublicSafetyError(f"ZIP archive exceeds size limit: {relative}")
     try:
         return path.read_bytes()
     except OSError as exc:
@@ -725,14 +738,40 @@ def _connector_finding_for_mapping(
     return None
 
 
-def _compose_yaml_documents(text: str):
+def _compose_yaml_documents(text: str, relative: str):
     try:
         yield from yaml.compose_all(text, Loader=yaml.SafeLoader)
-    except yaml.YAMLError:
-        return
+    except yaml.YAMLError as exc:
+        raise PublicSafetyError(f"malformed structured document: {relative}") from exc
 
 
-def _iter_embedded_json_documents(text: str):
+def _compose_json_documents(text: str, relative: str):
+    """Compose strict JSON while allowing one fenced source-label comment.
+
+    Approved design documents label some JSON examples with a single leading
+    ``// path/to/example.json`` line. Replacing that display-only annotation
+    with whitespace retains line locations while ensuring every remaining byte
+    is valid JSON before it is inspected as a structured connector payload.
+    """
+    normalized = re.sub(r"\A[ \t]*//[^\r\n]*(?:\r?\n)?", "\n", text, count=1)
+    try:
+        json.loads(normalized)
+    except json.JSONDecodeError as exc:
+        # A documented JSON-property fragment is useful in instructions but
+        # not a complete JSON value. Validate it as the contents of an object
+        # before composing the original fragment for accurate source lines.
+        if not normalized.lstrip().startswith('"'):
+            raise PublicSafetyError(f"malformed structured document: {relative}") from exc
+        try:
+            json.loads("{" + normalized + "}")
+        except json.JSONDecodeError as fragment_exc:
+            raise PublicSafetyError(
+                f"malformed structured document: {relative}"
+            ) from fragment_exc
+    yield from _compose_yaml_documents(normalized, relative)
+
+
+def _iter_embedded_json_documents(text: str, relative: str):
     decoder = json.JSONDecoder()
     position = 0
     while position < len(text):
@@ -745,40 +784,43 @@ def _iter_embedded_json_documents(text: str):
         except json.JSONDecodeError:
             position = start + 1
             continue
-        try:
-            node = yaml.compose(text[start : start + end], Loader=yaml.SafeLoader)
-        except yaml.YAMLError:
-            position = start + 1
-            continue
-        if node is not None:
-            yield node, text.count("\n", 0, start)
+        for node in _compose_yaml_documents(text[start : start + end], relative):
+            if node is not None:
+                yield node, text.count("\n", 0, start)
         position = start + end
 
 
-def _iter_structured_documents(text: str):
-    for node in _compose_yaml_documents(text):
-        if node is not None:
-            yield node, 0
+def _iter_structured_documents(text: str, relative: str, suffix: str):
+    if suffix.lower() in STRUCTURED_YAML_FILE_SUFFIXES:
+        for node in _compose_yaml_documents(text, relative):
+            if node is not None:
+                yield node, 0
     for match in STRUCTURED_FENCE_RE.finditer(text):
-        line_offset = text.count("\n", 0, match.start(1))
-        for node in _compose_yaml_documents(match.group(1)):
+        payload = match.group("payload")
+        line_offset = text.count("\n", 0, match.start("payload"))
+        composer = (
+            _compose_json_documents
+            if match.group("format") == "json"
+            else _compose_yaml_documents
+        )
+        for node in composer(payload, relative):
             if node is not None:
                 yield node, line_offset
-    yield from _iter_embedded_json_documents(text)
+    yield from _iter_embedded_json_documents(text, relative)
 
 
-def _connector_response_findings(relative: str, text: str) -> list[Finding]:
+def _connector_response_findings(relative: str, text: str, suffix: str) -> list[Finding]:
     """Find nested connector responses without treating ordinary JSON as private.
 
     Provider-specific signature combinations make copied connector payloads
     sensitive even when they contain no standalone ID, email, or secret. The
-    parser considers structured JSON and YAML in every scanned text source,
-    including ZIP members and fenced payloads, and only reports a mapping when
-    that mapping itself establishes a Notion, Gmail, Google Drive, or People
-    response context.
+    parser considers structured JSON and YAML files, fenced payloads, and ZIP
+    members, and only reports a mapping when that mapping itself establishes a
+    Notion, Gmail, Google Drive, or People response context. A malformed
+    structured payload fails closed rather than bypassing connector detection.
     """
     findings: list[Finding] = []
-    for document, line_offset in _iter_structured_documents(text):
+    for document, line_offset in _iter_structured_documents(text, relative, suffix):
         for node in _iter_mapping_nodes(document):
             finding = _connector_finding_for_mapping(relative, node, line_offset)
             if finding is not None:
@@ -800,17 +842,22 @@ def _scan_file(
     contents = _read_file_bytes(path, relative)
     if path.suffix.lower() == ".zip" or _looks_like_zip(contents):
         text_sources = (
-            (text_relative, text, False)
+            (text_relative, text, False, Path(text_relative).suffix)
             for text_relative, text in _iter_zip_texts(contents, relative)
         )
     else:
         text_sources = (
-            (relative, _decode_contents(contents, relative, path.suffix), allow_historical_references),
+            (
+                relative,
+                _decode_contents(contents, relative, path.suffix),
+                allow_historical_references,
+                path.suffix,
+            ),
         )
 
     findings: list[Finding] = []
-    for text_relative, text, source_allows_historical_references in text_sources:
-        findings.extend(_connector_response_findings(text_relative, text))
+    for text_relative, text, source_allows_historical_references, suffix in text_sources:
+        findings.extend(_connector_response_findings(text_relative, text, suffix))
         findings.extend(_multiline_authentication_secret_findings(text_relative, text))
         for line_number, line in enumerate(text.splitlines(), 1):
             findings.extend(

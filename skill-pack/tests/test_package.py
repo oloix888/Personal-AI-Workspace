@@ -1,4 +1,6 @@
 from pathlib import Path
+import subprocess
+import sys
 import zipfile
 
 import pytest
@@ -47,6 +49,57 @@ def test_checksum_manifest_is_sorted(tmp_path: Path) -> None:
     lines = output.read_text(encoding="utf-8").splitlines()
     assert lines[0].endswith("  a.zip")
     assert lines[1].endswith("  b.zip")
+
+
+def test_checksum_manifest_rejects_duplicate_artifact_names(tmp_path: Path) -> None:
+    first = tmp_path / "first" / "repeated.zip"
+    second = tmp_path / "second" / "repeated.zip"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+
+    with pytest.raises(ValueError, match="duplicate artifact/checksum name: repeated.zip"):
+        write_checksums([first, second], tmp_path / "SHA256SUMS.txt")
+
+    assert not (tmp_path / "SHA256SUMS.txt").exists()
+
+
+def test_packaging_cli_rejects_duplicate_root_artifact_names_before_writing_output(
+    tmp_path: Path,
+) -> None:
+    first = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path / "first",
+        "0.1.0-beta.1",
+    )
+    second = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path / "second",
+        "0.1.0-beta.1",
+    )
+    output = tmp_path / "dist"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "skill-pack/scripts/package_skill_pack.py",
+            str(first),
+            str(second),
+            "--output",
+            str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "duplicate artifact/checksum name: minimal-skill.zip" in result.stderr
+    assert not output.exists()
 
 
 def test_packaging_rejects_an_invalid_skill_tree_before_creating_an_archive(

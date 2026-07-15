@@ -14,7 +14,10 @@ def parse_skill_frontmatter(text: str) -> dict[str, Any]:
     match = re.match(r"\A---\n(.*?)\n---\n", text, flags=re.DOTALL)
     if not match:
         raise FrontmatterError("SKILL.md must start with YAML frontmatter")
-    payload = yaml.safe_load(match.group(1))
+    try:
+        payload = yaml.safe_load(match.group(1))
+    except yaml.YAMLError as exc:
+        raise FrontmatterError("malformed YAML frontmatter") from exc
     if not isinstance(payload, dict):
         raise FrontmatterError("frontmatter must be a mapping")
     name = payload.get("name")

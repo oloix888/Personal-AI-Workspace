@@ -6,6 +6,42 @@ from pathlib import Path
 import shutil
 
 
+def _paths_overlap(first: Path, second: Path) -> bool:
+    """Return whether either resolved path is contained by the other."""
+    try:
+        second.relative_to(first)
+        return True
+    except ValueError:
+        pass
+    try:
+        first.relative_to(second)
+        return True
+    except ValueError:
+        return False
+
+
+def _assert_build_paths_do_not_overlap(
+    source_root: Path, shared_root: Path, destination: Path
+) -> None:
+    """Protect inputs before a rebuild removes an existing destination tree."""
+    try:
+        resolved_paths = {
+            "source": source_root.resolve(),
+            "shared": shared_root.resolve(),
+            "destination": destination.resolve(),
+        }
+    except OSError as exc:
+        raise ValueError("unable to resolve build paths") from exc
+
+    names = tuple(resolved_paths)
+    for index, first_name in enumerate(names):
+        for second_name in names[index + 1 :]:
+            if _paths_overlap(resolved_paths[first_name], resolved_paths[second_name]):
+                raise ValueError(
+                    f"build paths overlap: {first_name} and {second_name}"
+                )
+
+
 def _assert_tree_has_no_symlinks(source: Path, tree_name: str) -> None:
     """Reject links before a build can copy or dereference an input tree."""
     if source.is_symlink():
@@ -48,10 +84,11 @@ def _find_legal_root(shared_root: Path) -> Path:
 def build_skill(source_root: Path, shared_root: Path, destination_root: Path, version: str) -> Path:
     # Validate both inputs before deleting an existing destination.  A public
     # build must never silently dereference a source/shared symlink.
-    _assert_tree_has_no_symlinks(source_root, "source")
-    _assert_tree_has_no_symlinks(shared_root, "shared")
     skill_name = source_root.name
     destination = destination_root / skill_name
+    _assert_build_paths_do_not_overlap(source_root, shared_root, destination)
+    _assert_tree_has_no_symlinks(source_root, "source")
+    _assert_tree_has_no_symlinks(shared_root, "shared")
     if destination.exists():
         shutil.rmtree(destination)
     destination.mkdir(parents=True)

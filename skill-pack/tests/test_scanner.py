@@ -1,4 +1,5 @@
 import io
+from collections.abc import Callable
 from pathlib import Path
 import zipfile
 
@@ -289,6 +290,97 @@ response:
     }
     assert {"gmail_connector_response", "people_connector_response"} <= source_rules
     assert {"gmail_connector_response", "people_connector_response"} <= archive_rules
+
+
+@pytest.mark.parametrize(
+    ("location", "writer", "expected_path"),
+    [
+        (
+            "connector.yaml",
+            lambda path, payload: path.write_text(payload, encoding="utf-8"),
+            "connector.yaml",
+        ),
+        (
+            "connector.md",
+            lambda path, payload: path.write_text(
+                f"""\\
+```yaml
+{payload}```
+""",
+                encoding="utf-8",
+            ),
+            "connector.md",
+        ),
+        (
+            "connector.zip",
+            lambda path, payload: _write_zip_member(path, "nested/connector.yml", payload),
+            "connector.zip!nested/connector.yml",
+        ),
+    ],
+)
+def test_scanner_fails_closed_for_malformed_yaml_connector_payloads(
+    tmp_path: Path,
+    location: str,
+    writer: Callable[[Path, str], object],
+    expected_path: str,
+) -> None:
+    payload = """\\
+object: page
+id: 123e4567-e89b-12d3-a456-426614174000
+    properties: [unterminated
+"""
+    path = tmp_path / location
+    writer(path, payload)
+
+    with pytest.raises(PublicSafetyError, match=rf"malformed structured document: {expected_path}"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+def _write_zip_member(path: Path, member_name: str, contents: str) -> None:
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(member_name, contents)
+
+
+@pytest.mark.parametrize("filename", ["ordinary.md", "archive.zip"])
+def test_scanner_enforces_stat_size_limit_before_reading_disk_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, filename: str
+) -> None:
+    path = tmp_path / filename
+    if path.suffix == ".zip":
+        _write_zip_member(path, "safe.md", "safe")
+    else:
+        path.write_text("safe", encoding="utf-8")
+    monkeypatch.setattr(scanner, "MAX_SCANNED_FILE_SIZE", 1)
+    original_read_bytes = Path.read_bytes
+
+    def fail_if_read(candidate: Path) -> bytes:
+        if candidate == path:
+            pytest.fail("scanner read an oversized on-disk file before its stat limit check")
+        return original_read_bytes(candidate)
+
+    monkeypatch.setattr(Path, "read_bytes", fail_if_read)
+
+    with pytest.raises(PublicSafetyError, match=rf"file exceeds size limit: {filename}"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+def test_scanner_enforces_zip_archive_stat_limit_before_reading(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    archive = tmp_path / "oversized.zip"
+    _write_zip_member(archive, "safe.md", "safe")
+    monkeypatch.setattr(scanner, "MAX_ZIP_ARCHIVE_SIZE", 1)
+    original_read_bytes = Path.read_bytes
+
+    def fail_if_read(candidate: Path) -> bytes:
+        if candidate == archive:
+            pytest.fail("scanner read an oversized ZIP before its stat limit check")
+        return original_read_bytes(candidate)
+
+    monkeypatch.setattr(Path, "read_bytes", fail_if_read)
+
+    with pytest.raises(PublicSafetyError, match="ZIP archive exceeds size limit: oversized.zip"):
+        scan_file(archive, "michal24749@gmail.com")
 
 
 def test_scanner_allows_generic_fictional_json_without_connector_context(tmp_path: Path) -> None:
