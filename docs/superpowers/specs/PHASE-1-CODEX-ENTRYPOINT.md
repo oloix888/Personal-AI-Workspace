@@ -36,6 +36,19 @@ Read all of these before implementation:
 
 If a filename differs slightly in the repository, locate the matching approved document by title and record the resolved path in the progress ledger before implementation.
 
+## Document precedence
+
+When two approved documents differ, apply this precedence from highest to lowest:
+
+1. this canonical entrypoint;
+2. the newest binding addendum that addresses the disputed behavior;
+3. the final Phase 1 release scope audit;
+4. the focused implementation plan for the affected workstream;
+5. the original Phase 1 architecture specification;
+6. older issue text, historical PR descriptions, cached reports, or obsolete implementation branches.
+
+Do not silently choose between conflicts. Record the conflict and the applied precedence in `.superpowers/sdd/progress.md`.
+
 ## Version targets
 
 ```text
@@ -46,6 +59,23 @@ Context Bootstrap: 0.1.0-beta.1
 Private Emma adapter: 6.0.0-rc.1
 Private rollback skill: 5.6.0
 ```
+
+## Binding private-adapter errata
+
+The older private-adapter plan contains historical references to migration from `5.5.0` and artifact names for a stable `6.0.0`. Those references are superseded.
+
+The implementation MUST use:
+
+```text
+migration baseline: emma-workspace-memory 5.6.0
+rollback target: emma-workspace-memory 5.6.0
+build target: emma-workspace-memory 6.0.0-rc.1
+activation state: blocked until public skills and all private checks pass
+```
+
+The earlier locally built `6.0.0-rc.1` candidate is historical build evidence only and is not activation-ready. Rebuild the candidate after the public skills exist so it includes Constitution 3.3, Context Bootstrap 1.3, the deployment-specific capability-manifest sentinel, current-session evidence leases, Bootstrap Task Ledger reconciliation, owner-only disclosure, and Autonomous Memory Capture.
+
+Only public-safe adapter templates, schemas, loaders, tests, and build tooling may be committed to this public repository. The real private manifest, private IDs, private artifacts, and live installation reports stay outside public source and public release assets.
 
 ## Implementation order
 
@@ -69,9 +99,10 @@ Execute the plans in this exact order:
 
 - Cached Context Bootstrap content is orientation only.
 - Every new conversation revalidates live capability and task sources.
-- A configured-capability manifest is full only after pagination reaches `has_more=false`, one terminal sentinel is present, observed count matches deployment-specific expected count, keys are unique, and required fields are populated.
+- A configured-capability manifest is full only after pagination reaches `has_more=false`, one terminal sentinel is present, observed count matches the deployment-specific expected count, keys are unique, and required fields are populated.
 - Active task coverage is full only after the canonical task ledger and configured execution backend are exhausted and reconciled.
 - A cached `FULL` can never upgrade a live `PARTIAL` or `BLOCKED` result.
+- Public fixtures and schemas MUST use deployment-neutral counts; the private count `44` is configuration, not a public constant.
 
 ### Constitution
 
