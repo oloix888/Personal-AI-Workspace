@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["generated_at", "workspace", "coverage", "features", "tasks", "projects", "commitments", "reviews", "risks", "contradictions", "recent_material_changes", "high_value_facts"],
+  "properties": {
+    "generated_at": {"type": "string", "format": "date-time"},
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "framework_version"],
+      "properties": {
+        "title": {"type": "string"},
+        "framework_version": {"type": "string"},
+        "constitution_url": {"type": ["string", "null"]}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "sources_checked", "sources_unavailable", "truncated", "notes"],
+      "properties": {
+        "status": {"enum": ["FULL", "PARTIAL", "DEGRADED"]},
+        "sources_checked": {"type": "array", "items": {"type": "string"}},
+        "sources_unavailable": {"type": "array", "items": {"type": "string"}},
+        "truncated": {"type": "boolean"},
+        "notes": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "features": {"type": "array"},
+    "tasks": {"type": "array"},
+    "projects": {"type": "array"},
+    "commitments": {"type": "array"},
+    "reviews": {"type": "array"},
+    "risks": {"type": "array"},
+    "contradictions": {"type": "array"},
+    "recent_material_changes": {"type": "array"},
+    "high_value_facts": {"type": "array"}
+  }
+}

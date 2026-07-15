@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "personal-ai-workspace-skill-pack-tools"
+version = "0.1.0b1"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+  "PyYAML>=6,<7",
+  "jsonschema>=4,<5",
+]
+
+[tool.setuptools]
+package-dir = {"" = "skill-pack/src"}
+
+[tool.setuptools.packages.find]
+where = ["skill-pack/src"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["skill-pack/tests"]
+pythonpath = ["skill-pack/src"]

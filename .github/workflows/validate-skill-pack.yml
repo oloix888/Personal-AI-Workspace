@@ -1,0 +1,30 @@
+name: Validate Skill Pack
+
+on:
+  pull_request:
+    paths:
+      - "skills/**"
+      - "skill-pack/**"
+      - "pyproject.toml"
+      - ".github/workflows/validate-skill-pack.yml"
+  push:
+    branches: [main]
+    paths:
+      - "skills/**"
+      - "skill-pack/**"
+      - "pyproject.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e '.[dev]'
+      - run: python -m pytest -v
+      - run: python skill-pack/scripts/scan_private_identifiers.py skills

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Minimal Skill"
+  short_description: "Builder fixture"
+policy:
+  allow_implicit_invocation: false
