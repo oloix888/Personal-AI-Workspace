@@ -28,6 +28,11 @@ references, or suppress emails, secrets, Notion IDs, Drive IDs, or archive conte
 Unknown files that are neither UTF-8 text nor a declared binary asset format fail the
 scan.
 
+Package-boundary validation uses a fail-closed static policy for runtime Python:
+file APIs must use direct or statically resolvable aliases with in-root paths;
+dynamic code execution (`eval`/`exec`) and dynamic module or callable resolution
+are rejected. Builds also reject every source or shared-tree symlink before copying.
+
 ZIP archives are identified from their content as well as their filename, so a ZIP
 hidden behind a binary extension is scanned too. Archive inspection recurses through
 up to three nested archive layers and fails closed for malformed, encrypted, oversized,

@@ -182,15 +182,24 @@ AUTH_SECRET_RE = re.compile(
                 api[ _-]?key|
                 access[ _-]?token|
                 private[ _-]?key|
-                session[ _-]?cookie
+                session[ _-]?cookie|
+                client[ _-]?secret|
+                secret
             )\b
         |
         (?<![A-Za-z0-9_-])token\b
         |
         (?<![A-Za-z0-9_-])cookie\b
-        )\s*[:=]
+        )\s*[:=]\s*
+        (?=
+            (?:
+                ["']\s*[^"'\s]
+                |
+                [^'"\s#;]
+            )
+        )
         |
-        \bauthorization\b\s*[:=]\s*bearer\b
+        \bauthorization\b\s*[:=]\s*bearer\b\s+\S+
     )
     """
 )
@@ -202,7 +211,13 @@ NOTION_PRIVATE_RE = re.compile(
     r"\b(?:notion[_ -]?)?(?:page|database|view)[_ -]?id\b\s*[:=]\s*[\"']?[0-9a-f-]{32,})"
 )
 GOOGLE_DRIVE_URL_RE = re.compile(
-    r"(?i)https?://drive\.google\.com/(?:drive/(?:u/\d+/)?folders|file/d)/[A-Za-z0-9_-]+"
+    r"(?i)(?:"
+    r"https?://drive\.google\.com/(?:"
+    r"(?:drive/(?:u/\d+/)?folders|file/d)/[A-Za-z0-9_-]+"
+    r"|(?:open|uc|drive/u/\d+/open)\?[^#\s]*\bid=[A-Za-z0-9_-]+"
+    r")"
+    r"|https?://docs\.google\.com/document/d/[A-Za-z0-9_-]+(?:[/?#]|\b)"
+    r")"
 )
 GOOGLE_DRIVE_ID_RE = re.compile(
     r"(?i)\b(?:folder[_ -]?id|drive[_ -]?(?:folder|file)?[_ -]?id|google[_ -]?drive[_ -]?id)\b"

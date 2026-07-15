@@ -13,10 +13,6 @@ import yaml
 
 from .frontmatter import FrontmatterError, parse_skill_frontmatter
 
-INLINE_LINK_RE = re.compile(
-    r"\[[^\]\n]+\]\(\s*(?:<(?P<angle>[^>\n]+)>|(?P<bare>[^()\s]+))"
-    r"(?:\s+(?:\"[^\"\n]*\"|'[^'\n]*'|\([^()\n]*\)))?\s*\)",
-)
 REFERENCE_DEFINITION_RE = re.compile(
     r"^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*(?:<(?P<angle>[^>\n]*)>|(?P<bare>\S+))",
     re.MULTILINE,
@@ -74,6 +70,41 @@ META_REFRESH_URL_RE = re.compile(
     r"(?:^|;)\s*url\s*=\s*(?:'(?P<single>[^']*)'|\"(?P<double>[^\"]*)\"|(?P<bare>[^;\s]*))",
     re.IGNORECASE,
 )
+STATIC_FILE_OPEN_CALLS = frozenset({"open", "builtins.open", "io.open", "os.open"})
+STATIC_FILE_COPY_CALLS = frozenset(
+    {
+        "shutil.copy",
+        "shutil.copy2",
+        "shutil.copyfile",
+        "shutil.copytree",
+        "shutil.move",
+    }
+)
+DYNAMIC_CODE_CALLS = frozenset({"eval", "exec", "builtins.eval", "builtins.exec"})
+DYNAMIC_LOOKUP_CALLS = frozenset({"getattr", "builtins.getattr"})
+DYNAMIC_RUNTIME_RESOLUTION_CALLS = frozenset(
+    {
+        "__import__",
+        "builtins.__import__",
+        "globals",
+        "builtins.globals",
+        "locals",
+        "builtins.locals",
+        "vars",
+        "builtins.vars",
+        "importlib.import_module",
+    }
+)
+STATIC_RUNTIME_MODULES = frozenset({"builtins", "io", "os", "shutil"})
+STATIC_ALIAS_MODULES = STATIC_RUNTIME_MODULES | frozenset({"importlib"})
+UNRESOLVED_MONITORED_ALIAS = "<unresolved-monitored-alias>"
+MONITORED_RUNTIME_CALLS = (
+    STATIC_FILE_OPEN_CALLS
+    | STATIC_FILE_COPY_CALLS
+    | DYNAMIC_CODE_CALLS
+    | DYNAMIC_LOOKUP_CALLS
+    | DYNAMIC_RUNTIME_RESOLUTION_CALLS
+)
 
 
 @dataclass(frozen=True)
@@ -125,10 +156,60 @@ class _HTMLLinkParser(HTMLParser):
 
 
 def _markdown_link_targets(text: str) -> list[str]:
+    """Return Markdown destinations without executing or normalising the link.
+
+    Inline destinations permit balanced parentheses, while optional titles may
+    themselves use quoted or parenthesized forms.  A regular expression that
+    stops at the first parenthesis leaves an outside-root link unvalidated, so
+    the inline form uses this small lexical parser.  The reference-definition
+    expression remains sufficient because its destination ends at whitespace.
+    """
+
     targets: list[str] = []
-    for expression in (INLINE_LINK_RE, REFERENCE_DEFINITION_RE):
-        for match in expression.finditer(text):
-            targets.append(match.group("angle") or match.group("bare"))
+    position = 0
+    while True:
+        label_start = text.find("[", position)
+        if label_start < 0:
+            break
+        destination_start = text.find("](", label_start + 1)
+        if destination_start < 0:
+            break
+        cursor = destination_start + 2
+        while cursor < len(text) and text[cursor] in " \t\r\n":
+            cursor += 1
+        if cursor >= len(text):
+            break
+        if text[cursor] == "<":
+            destination_end = text.find(">", cursor + 1)
+            if destination_end < 0:
+                position = cursor + 1
+                continue
+            targets.append(text[cursor + 1 : destination_end])
+            position = destination_end + 1
+            continue
+
+        destination_end = cursor
+        depth = 0
+        while destination_end < len(text):
+            character = text[destination_end]
+            if character == "\\" and destination_end + 1 < len(text):
+                destination_end += 2
+                continue
+            if character == "(":
+                depth += 1
+            elif character == ")":
+                if depth == 0:
+                    break
+                depth -= 1
+            elif character in " \t\r\n" and depth == 0:
+                break
+            destination_end += 1
+        if destination_end > cursor:
+            targets.append(text[cursor:destination_end])
+        position = max(destination_end + 1, cursor + 1)
+
+    for match in REFERENCE_DEFINITION_RE.finditer(text):
+        targets.append(match.group("angle") or match.group("bare"))
     return targets
 
 
@@ -236,6 +317,10 @@ def _structured_file_reference_targets(payload: object) -> list[str]:
                     pending.append((value, False))
         elif isinstance(current, list):
             pending.extend((value, inherited_file_reference) for value in current)
+        elif isinstance(current, str) and (
+            inherited_file_reference or _looks_like_unsafe_file_reference(current)
+        ):
+            targets.append(current)
     return targets
 
 
@@ -430,11 +515,21 @@ def _python_path_expression(
 
 
 class _PythonRuntimePathVisitor(ast.NodeVisitor):
+    """Fail-closed static validation for package runtime file and code APIs.
+
+    Package scripts may call monitored file APIs only through direct names or
+    aliases resolved from static imports and assignments.  Their path arguments
+    must resolve inside the skill root.  ``eval`` and ``exec`` (and aliases of
+    them) are always rejected because dynamic code cannot establish a reliable
+    package boundary.  Dynamic lookup of a monitored callable is rejected too.
+    """
+
     def __init__(self, root: Path, source: Path) -> None:
         self.root = root
         self.source = source
         self.errors: list[str] = []
         self.bindings: dict[str, _StaticPythonPath | None] = {}
+        self.symbols: dict[str, str | None] = {}
         self._reported: set[tuple[str, str | None]] = set()
 
     def _report(self, error: str, target: str | None = None) -> None:
@@ -445,6 +540,26 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
         target_text = f": {target}" if target else ""
         self.errors.append(
             f"{self.source.relative_to(self.root)} runtime file reference {error}{target_text}"
+        )
+
+    def _report_dynamic_code(self, target: str) -> None:
+        key = ("dynamic code execution is not allowed", target)
+        if key in self._reported:
+            return
+        self._reported.add(key)
+        self.errors.append(
+            f"{self.source.relative_to(self.root)} dynamic code execution is not allowed: "
+            f"{target}"
+        )
+
+    def _report_static_policy(self, error: str, target: str) -> None:
+        key = (error, target)
+        if key in self._reported:
+            return
+        self._reported.add(key)
+        self.errors.append(
+            f"{self.source.relative_to(self.root)} runtime static-analysis policy "
+            f"{error}: {target}"
         )
 
     def _check_expression(self, node: ast.AST, *, require_resolved: bool = False) -> None:
@@ -461,18 +576,47 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
             self.bindings[target.id] = _python_path_expression(
                 value, self.source, self.root, self.bindings
             )
+            symbol = self._symbol_name(value)
+            self.symbols[target.id] = (
+                symbol
+                if symbol in STATIC_ALIAS_MODULES or symbol in MONITORED_RUNTIME_CALLS
+                else None
+            )
+
+    def _symbol_name(self, node: ast.AST) -> str | None:
+        """Resolve direct and statically aliased module/callable spellings."""
+        name = _dotted_name(node)
+        if name is None:
+            return None
+        first, *remainder = name.split(".")
+        if first == "__builtins__":
+            return ".".join(("builtins", *remainder))
+        if first not in self.symbols:
+            return name
+        symbol = self.symbols[first]
+        if symbol is None:
+            return None
+        if symbol == UNRESOLVED_MONITORED_ALIAS:
+            return symbol
+        if not remainder:
+            return symbol
+        if symbol in STATIC_ALIAS_MODULES:
+            return ".".join((symbol, *remainder))
+        return None
 
     def _visit_statements(
         self,
         statements: list[ast.stmt],
         initial_bindings: dict[str, _StaticPythonPath | None],
-    ) -> dict[str, _StaticPythonPath | None]:
-        outer_bindings = self.bindings
+        initial_symbols: dict[str, str | None],
+    ) -> tuple[dict[str, _StaticPythonPath | None], dict[str, str | None]]:
+        outer_bindings, outer_symbols = self.bindings, self.symbols
         self.bindings = initial_bindings.copy()
+        self.symbols = initial_symbols.copy()
         for statement in statements:
             self.visit(statement)
-        result = self.bindings
-        self.bindings = outer_bindings
+        result = (self.bindings, self.symbols)
+        self.bindings, self.symbols = outer_bindings, outer_symbols
         return result
 
     @staticmethod
@@ -486,9 +630,70 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
             merged[name] = values[0] if all(value == values[0] for value in values) else None
         return merged
 
+    @staticmethod
+    def _merge_symbols(*branches: dict[str, str | None]) -> dict[str, str | None]:
+        names = set().union(*(branch.keys() for branch in branches))
+        merged: dict[str, str | None] = {}
+        for name in names:
+            values = [branch.get(name) for branch in branches]
+            if all(value == values[0] for value in values):
+                merged[name] = values[0]
+            elif any(
+                value == UNRESOLVED_MONITORED_ALIAS
+                or value in STATIC_ALIAS_MODULES
+                or value in MONITORED_RUNTIME_CALLS
+                for value in values
+            ):
+                merged[name] = UNRESOLVED_MONITORED_ALIAS
+            else:
+                merged[name] = None
+        return merged
+
     def _is_file_open_call(self, node: ast.Call) -> bool:
-        name = _dotted_name(node.func)
-        return name in {"open", "builtins.open", "io.open", "os.open"}
+        return self._symbol_name(node.func) in STATIC_FILE_OPEN_CALLS
+
+    def _is_file_copy_call(self, node: ast.Call) -> bool:
+        return self._symbol_name(node.func) in STATIC_FILE_COPY_CALLS
+
+    def _is_dynamic_code_call(self, node: ast.Call) -> bool:
+        return self._symbol_name(node.func) in DYNAMIC_CODE_CALLS
+
+    def _is_dynamic_lookup_call(self, node: ast.Call) -> bool:
+        return self._symbol_name(node.func) in DYNAMIC_LOOKUP_CALLS
+
+    def _is_dynamic_runtime_resolution_call(self, node: ast.Call) -> bool:
+        return self._symbol_name(node.func) in DYNAMIC_RUNTIME_RESOLUTION_CALLS
+
+    def _validate_dynamic_lookup(self, node: ast.Call) -> None:
+        if not node.args:
+            return
+        module = self._symbol_name(node.args[0])
+        if module not in STATIC_RUNTIME_MODULES:
+            return
+        attribute = _string_literal(node.args[1]) if len(node.args) > 1 else None
+        candidate = f"{module}.{attribute}" if attribute else None
+        if candidate is None or candidate in MONITORED_RUNTIME_CALLS:
+            self._report_static_policy("dynamic callable lookup is not allowed", module)
+
+    def _check_file_arguments(self, node: ast.Call, required: int) -> None:
+        arguments = list(node.args[:required])
+        if len(arguments) < required:
+            names = (
+                ("file", "path") if required == 1 else ("src", "source", "dst", "destination")
+            )
+            keyword_values = {
+                keyword.arg: keyword.value for keyword in node.keywords if keyword.arg is not None
+            }
+            arguments.extend(
+                keyword_values[name]
+                for name in names
+                if name in keyword_values and len(arguments) < required
+            )
+        if len(arguments) < required:
+            self._report("cannot be statically resolved")
+            return
+        for argument in arguments:
+            self._check_expression(argument, require_resolved=True)
 
     def _is_path_file_io_call(self, node: ast.Call) -> bool:
         return isinstance(node.func, ast.Attribute) and node.func.attr in {
@@ -525,53 +730,107 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
         self.visit(node.value)
         if isinstance(node.target, ast.Name):
             self.bindings[node.target.id] = None
+            self.symbols[node.target.id] = None
+
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        self.visit(node.value)
+        self._bind(node.target, node.value)
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for imported in node.names:
+            bound_name = imported.asname or imported.name.split(".", 1)[0]
+            self.symbols[bound_name] = (
+                imported.name if imported.name in STATIC_ALIAS_MODULES else None
+            )
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        module = node.module or ""
+        for imported in node.names:
+            if imported.name == "*":
+                if module in STATIC_RUNTIME_MODULES:
+                    self._report_static_policy("wildcard import is not allowed", module)
+                continue
+            bound_name = imported.asname or imported.name
+            candidate = f"{module}.{imported.name}" if module else imported.name
+            self.symbols[bound_name] = (
+                candidate if candidate in MONITORED_RUNTIME_CALLS else None
+            )
 
     def visit_If(self, node: ast.If) -> None:
         self.visit(node.test)
-        initial_bindings = self.bindings.copy()
-        body_bindings = self._visit_statements(node.body, initial_bindings)
-        else_bindings = self._visit_statements(node.orelse, initial_bindings)
+        initial_bindings, initial_symbols = self.bindings.copy(), self.symbols.copy()
+        body_bindings, body_symbols = self._visit_statements(
+            node.body, initial_bindings, initial_symbols
+        )
+        else_bindings, else_symbols = self._visit_statements(
+            node.orelse, initial_bindings, initial_symbols
+        )
         self.bindings = self._merge_bindings(body_bindings, else_bindings)
+        self.symbols = self._merge_symbols(body_symbols, else_symbols)
 
     def visit_For(self, node: ast.For) -> None:
         self.visit(node.iter)
-        initial_bindings = self.bindings.copy()
-        body_bindings = self._visit_statements(node.body, initial_bindings)
+        initial_bindings, initial_symbols = self.bindings.copy(), self.symbols.copy()
+        body_bindings, body_symbols = self._visit_statements(
+            node.body, initial_bindings, initial_symbols
+        )
         self.bindings = self._merge_bindings(initial_bindings, body_bindings)
+        self.symbols = self._merge_symbols(initial_symbols, body_symbols)
         if node.orelse:
-            self.bindings = self._visit_statements(node.orelse, self.bindings)
+            self.bindings, self.symbols = self._visit_statements(
+                node.orelse, self.bindings, self.symbols
+            )
 
     def visit_While(self, node: ast.While) -> None:
         self.visit(node.test)
-        initial_bindings = self.bindings.copy()
-        body_bindings = self._visit_statements(node.body, initial_bindings)
+        initial_bindings, initial_symbols = self.bindings.copy(), self.symbols.copy()
+        body_bindings, body_symbols = self._visit_statements(
+            node.body, initial_bindings, initial_symbols
+        )
         self.bindings = self._merge_bindings(initial_bindings, body_bindings)
+        self.symbols = self._merge_symbols(initial_symbols, body_symbols)
         if node.orelse:
-            self.bindings = self._visit_statements(node.orelse, self.bindings)
+            self.bindings, self.symbols = self._visit_statements(
+                node.orelse, self.bindings, self.symbols
+            )
 
     def visit_Try(self, node: ast.Try) -> None:
-        initial_bindings = self.bindings.copy()
-        normal_bindings = self._visit_statements(node.body, initial_bindings)
+        initial_bindings, initial_symbols = self.bindings.copy(), self.symbols.copy()
+        normal_bindings, normal_symbols = self._visit_statements(
+            node.body, initial_bindings, initial_symbols
+        )
         if node.orelse:
-            normal_bindings = self._visit_statements(node.orelse, normal_bindings)
-        handler_bindings = [
-            self._visit_statements(handler.body, initial_bindings)
+            normal_bindings, normal_symbols = self._visit_statements(
+                node.orelse, normal_bindings, normal_symbols
+            )
+        handler_states = [
+            self._visit_statements(handler.body, initial_bindings, initial_symbols)
             for handler in node.handlers
         ]
-        self.bindings = self._merge_bindings(normal_bindings, *handler_bindings)
+        self.bindings = self._merge_bindings(
+            normal_bindings, *(state[0] for state in handler_states)
+        )
+        self.symbols = self._merge_symbols(
+            normal_symbols, *(state[1] for state in handler_states)
+        )
         if node.finalbody:
-            self.bindings = self._visit_statements(node.finalbody, self.bindings)
+            self.bindings, self.symbols = self._visit_statements(
+                node.finalbody, self.bindings, self.symbols
+            )
 
     def visit_Match(self, node: ast.Match) -> None:
         self.visit(node.subject)
-        initial_bindings = self.bindings.copy()
+        initial_bindings, initial_symbols = self.bindings.copy(), self.symbols.copy()
         branches = [
-            self._visit_statements(case.body, initial_bindings) for case in node.cases
+            self._visit_statements(case.body, initial_bindings, initial_symbols)
+            for case in node.cases
         ]
-        self.bindings = self._merge_bindings(initial_bindings, *branches)
+        self.bindings = self._merge_bindings(initial_bindings, *(state[0] for state in branches))
+        self.symbols = self._merge_symbols(initial_symbols, *(state[1] for state in branches))
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        self._visit_statements(node.body, self.bindings)
+        self.symbols[node.name] = None
+        self._visit_statements(node.body, self.bindings, self.symbols)
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
@@ -579,7 +838,8 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
         visit_TryStar = visit_Try
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        self._visit_statements(node.body, self.bindings)
+        self.symbols[node.name] = None
+        self._visit_statements(node.body, self.bindings, self.symbols)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         self._check_expression(node)
@@ -590,14 +850,31 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
+        if self._symbol_name(node.value) == "builtins":
+            self._report_static_policy("dynamic callable lookup is not allowed", "builtins")
         self._check_expression(node)
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
         self._check_expression(node)
-        if self._is_file_open_call(node) and node.args:
-            self._check_expression(node.args[0], require_resolved=True)
-        if self._is_path_file_io_call(node):
+        call_name = self._symbol_name(node.func)
+        is_monitored_file_call = self._is_file_open_call(node) or self._is_file_copy_call(node)
+        if call_name == UNRESOLVED_MONITORED_ALIAS:
+            self._report_static_policy(
+                "monitored callable alias cannot be statically resolved",
+                _dotted_name(node.func) or "call",
+            )
+        elif self._is_dynamic_code_call(node):
+            self._report_dynamic_code(call_name or "dynamic code")
+        elif self._is_dynamic_runtime_resolution_call(node):
+            self._report_static_policy("dynamic runtime resolution is not allowed", call_name or "call")
+        elif self._is_dynamic_lookup_call(node):
+            self._validate_dynamic_lookup(node)
+        elif self._is_file_open_call(node):
+            self._check_file_arguments(node, 1)
+        elif self._is_file_copy_call(node):
+            self._check_file_arguments(node, 2)
+        if self._is_path_file_io_call(node) and not is_monitored_file_call:
             self._check_expression(node.func.value, require_resolved=True)
         self.generic_visit(node)
 

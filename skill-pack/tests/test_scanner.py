@@ -244,6 +244,57 @@ def test_scanner_catches_secret_literals_in_text_and_extensionless_files(
     ]
 
 
+@pytest.mark.parametrize("label", ["secret", "client_secret", "clientSecret"])
+def test_scanner_catches_nonempty_secret_assignments_in_supported_label_styles(
+    tmp_path: Path, label: str
+) -> None:
+    (tmp_path / "settings.conf").write_text(
+        f"{label} = synthetic-value\n", encoding="utf-8"
+    )
+
+    rules = {finding.rule for finding in scan_tree(tmp_path, "michal24749@gmail.com")}
+
+    assert "authentication_secret_literal" in rules
+
+
+def test_scanner_allows_empty_secret_assignment(tmp_path: Path) -> None:
+    label = "se" + "cret"
+    (tmp_path / "settings.conf").write_text(f'{label} = ""\n', encoding="utf-8")
+
+    assert scan_tree(tmp_path, "michal24749@gmail.com") == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/open?id=1AbCdEfGhIjKlMnOp",
+        "/uc?id=1AbCdEfGhIjKlMnOp",
+        "/drive/u/0/open?id=1AbCdEfGhIjKlMnOp",
+    ],
+)
+def test_scanner_detects_google_drive_query_url_forms(tmp_path: Path, path: str) -> None:
+    drive_host = "drive.google" + ".com"
+    (tmp_path / "private-url.txt").write_text(
+        f"https://{drive_host}{path}\n", encoding="utf-8"
+    )
+
+    rules = {finding.rule for finding in scan_tree(tmp_path, "michal24749@gmail.com")}
+
+    assert "google_drive_identifier" in rules
+
+
+def test_scanner_detects_google_docs_document_urls(tmp_path: Path) -> None:
+    docs_host = "docs.google" + ".com"
+    identifier = "1AbCdEfGhIjKlMnOp"
+    (tmp_path / "private-url.txt").write_text(
+        f"https://{docs_host}/document/d/{identifier}/edit\n", encoding="utf-8"
+    )
+
+    rules = {finding.rule for finding in scan_tree(tmp_path, "michal24749@gmail.com")}
+
+    assert "google_drive_identifier" in rules
+
+
 def test_scanner_detects_synthetic_notion_dot_com_identifier(tmp_path: Path) -> None:
     host = "notion" + ".com"
     identifier = "a" * 32

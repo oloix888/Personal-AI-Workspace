@@ -33,6 +33,24 @@ def test_external_parent_reference_is_rejected(tmp_path: Path) -> None:
     assert any("escapes skill root" in error for error in validate_skill_root(built))
 
 
+def test_inline_markdown_link_with_balanced_parentheses_and_title_cannot_escape_skill_root(
+    tmp_path: Path,
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "SKILL.md").write_text(
+        (built / "SKILL.md").read_text(encoding="utf-8")
+        + '\n[outside](../../private(archive).md "optional (title)")\n',
+        encoding="utf-8",
+    )
+
+    assert any("link escapes skill root" in error for error in validate_skill_root(built))
+
+
 @pytest.mark.parametrize(
     "reference",
     [
@@ -164,6 +182,29 @@ def test_all_structured_config_path_forms_cannot_escape_skill_root(
     assert any(expected_error in error for error in validate_skill_root(built))
 
 
+def test_nested_arbitrary_structured_config_values_cannot_escape_skill_root(
+    tmp_path: Path,
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "agents" / "runtime.yaml").write_text(
+        "extensions:\n"
+        "  - arbitrary:\n"
+        "      nested:\n"
+        "        - file:///tmp/private-config.yaml\n"
+        "        - ../../private-config.yaml\n",
+        encoding="utf-8",
+    )
+
+    errors = validate_skill_root(built)
+
+    assert sum("runtime.yaml" in error and "file reference" in error for error in errors) == 2
+
+
 @pytest.mark.parametrize(
     "contents",
     [
@@ -276,8 +317,8 @@ def test_os_path_dirname_join_open_escape_is_rejected(tmp_path: Path) -> None:
     (built / "scripts" / "escape.py").write_text(
         "import os\n"
         "script_dir = os.path.dirname(__file__)\n"
-        'secret = os.path.join(script_dir, "..", "..", "private.txt")\n'
-        'with open(secret, encoding="utf-8") as handle:\n'
+        'target = os.path.join(script_dir, "..", "..", "private.txt")\n'
+        'with open(target, encoding="utf-8") as handle:\n'
         "    handle.read()\n",
         encoding="utf-8",
     )
@@ -353,6 +394,110 @@ def test_in_root_os_path_dirname_join_open_reference_is_allowed(tmp_path: Path) 
         "    handle.read()\n",
         encoding="utf-8",
     )
+
+    assert validate_skill_root(built) == []
+
+
+@pytest.mark.parametrize(
+    ("contents", "expected_error"),
+    [
+        (
+            "from builtins import open as read_external\n"
+            "read_external('../private-resource.txt')\n",
+            "runtime file reference escapes skill root",
+        ),
+        (
+            "import io as local_io\n"
+            "local_io.open('../private-resource.txt')\n",
+            "runtime file reference escapes skill root",
+        ),
+        (
+            "import builtins\n"
+            "read_external = builtins.open\n"
+            "read_external('../private-resource.txt')\n",
+            "runtime file reference escapes skill root",
+        ),
+        (
+            "from shutil import move as relocate\n"
+            "relocate('../private-resource.txt', 'references/local.md')\n",
+            "runtime file reference escapes skill root",
+        ),
+        (
+            "import shutil as file_ops\n"
+            "file_ops.copy('references/local.md', '../private-resource.txt')\n",
+            "runtime file reference escapes skill root",
+        ),
+        (
+            "from builtins import eval as evaluate\n"
+            "evaluate('1 + 1')\n",
+            "dynamic code execution is not allowed",
+        ),
+        (
+            "compile_and_run = exec\n"
+            "compile_and_run('pass')\n",
+            "dynamic code execution is not allowed",
+        ),
+        (
+            "if __name__:\n"
+            "    from io import open as conditionally_bound\n"
+            "conditionally_bound('../private-resource.txt')\n",
+            "monitored callable alias cannot be statically resolved",
+        ),
+        (
+            "loaded = __import__('io')\n"
+            "loaded.open('../private-resource.txt')\n",
+            "dynamic runtime resolution is not allowed",
+        ),
+        (
+            "import importlib as loader\n"
+            "loaded = loader.import_module('io')\n"
+            "loaded.open('../private-resource.txt')\n",
+            "dynamic runtime resolution is not allowed",
+        ),
+        (
+            "read_external = __builtins__['open']\n"
+            "read_external('../private-resource.txt')\n",
+            "dynamic callable lookup is not allowed",
+        ),
+    ],
+)
+def test_runtime_python_external_io_and_dynamic_code_aliases_are_rejected(
+    tmp_path: Path, contents: str, expected_error: str
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "scripts").mkdir()
+    (built / "scripts" / "unsafe.py").write_text(contents, encoding="utf-8")
+
+    assert any(expected_error in error for error in validate_skill_root(built))
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        "from builtins import open as read_local\n"
+        "read_local('references/local.md')\n",
+        "import io as local_io\n"
+        "local_io.open('references/local.md')\n",
+        "from shutil import copy as copy_local\n"
+        "copy_local('references/local.md', 'references/copied.md')\n",
+    ],
+)
+def test_runtime_python_static_external_io_aliases_allow_in_root_paths(
+    tmp_path: Path, contents: str
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "scripts").mkdir()
+    (built / "scripts" / "safe.py").write_text(contents, encoding="utf-8")
 
     assert validate_skill_root(built) == []
 

@@ -127,8 +127,8 @@ def test_packaging_rejects_html_path_escape_before_creating_an_archive(
             "scripts/escape.py",
             "import os\n"
             "script_dir = os.path.dirname(__file__)\n"
-            'secret = os.path.join(script_dir, "..", "..", "private.txt")\n'
-            'with open(secret, encoding="utf-8") as handle:\n'
+            'target = os.path.join(script_dir, "..", "..", "private.txt")\n'
+            'with open(target, encoding="utf-8") as handle:\n'
             "    handle.read()\n",
             "runtime file reference escapes skill root",
         ),

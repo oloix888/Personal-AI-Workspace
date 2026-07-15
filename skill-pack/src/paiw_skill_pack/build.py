@@ -1,8 +1,27 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 import shutil
+
+
+def _assert_tree_has_no_symlinks(source: Path, tree_name: str) -> None:
+    """Reject links before a build can copy or dereference an input tree."""
+    if source.is_symlink():
+        raise ValueError(f"{tree_name} tree contains symlink: .")
+    try:
+        for directory, directory_names, filenames in os.walk(source, followlinks=False):
+            directory_path = Path(directory)
+            for name in (*directory_names, *filenames):
+                path = directory_path / name
+                if path.is_symlink():
+                    relative = path.relative_to(source).as_posix()
+                    raise ValueError(f"{tree_name} tree contains symlink: {relative}")
+    except ValueError:
+        raise
+    except OSError as exc:
+        raise ValueError(f"unable to inspect {tree_name} tree for symlinks") from exc
 
 
 def _copy_tree(source: Path, destination: Path) -> None:
@@ -27,6 +46,10 @@ def _find_legal_root(shared_root: Path) -> Path:
 
 
 def build_skill(source_root: Path, shared_root: Path, destination_root: Path, version: str) -> Path:
+    # Validate both inputs before deleting an existing destination.  A public
+    # build must never silently dereference a source/shared symlink.
+    _assert_tree_has_no_symlinks(source_root, "source")
+    _assert_tree_has_no_symlinks(shared_root, "shared")
     skill_name = source_root.name
     destination = destination_root / skill_name
     if destination.exists():
