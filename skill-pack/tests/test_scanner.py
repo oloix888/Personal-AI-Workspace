@@ -193,6 +193,82 @@ def test_scanner_recursively_scans_nested_zip_members(tmp_path: Path) -> None:
     ]
 
 
+def test_scanner_scans_zip_archive_comment_and_trailing_bytes(tmp_path: Path) -> None:
+    private_email = "private.user" + "@example.com"
+    archive_path = tmp_path / "metadata.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("safe.md", "safe")
+        archive.comment = f"comment: {private_email}".encode("utf-8")
+    archive_path.write_bytes(archive_path.read_bytes() + f"tail: {private_email}".encode("utf-8"))
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    assert {(finding.path, finding.rule) for finding in findings} == {
+        ("metadata.zip!<archive-comment>", "non_allowlisted_email"),
+        ("metadata.zip!<trailing-bytes>", "non_allowlisted_email"),
+    }
+
+
+def test_scanner_fails_closed_for_zip_trailing_bytes_beyond_the_zip_comment_window(
+    tmp_path: Path,
+) -> None:
+    private_email = "private.user" + "@example.com"
+    archive_path = tmp_path / "long-tail.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("safe.md", "safe")
+    archive_path.write_bytes(
+        archive_path.read_bytes() + (b"safe-" * 14_000) + private_email.encode("utf-8")
+    )
+
+    with pytest.raises(PublicSafetyError, match="invalid ZIP archive: long-tail.zip"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+@pytest.mark.parametrize(
+    ("metadata_kind", "expected_location"),
+    [
+        ("comment", "metadata.zip!<archive-comment>"),
+        ("trailing", "metadata.zip!<trailing-bytes>"),
+    ],
+)
+def test_scanner_fails_closed_for_unclassified_zip_metadata(
+    tmp_path: Path, metadata_kind: str, expected_location: str
+) -> None:
+    archive_path = tmp_path / "metadata.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("safe.md", "safe")
+        if metadata_kind == "comment":
+            archive.comment = b"\xff"
+    if metadata_kind == "trailing":
+        archive_path.write_bytes(archive_path.read_bytes() + b"\xff")
+
+    with pytest.raises(PublicSafetyError, match=f"unclassified ZIP metadata: {expected_location}"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+def test_scanner_scans_zip_archive_and_member_names_at_every_nesting_level(
+    tmp_path: Path,
+) -> None:
+    private_email = "private.user" + "@example.com"
+    inner_bytes = io.BytesIO()
+    with zipfile.ZipFile(inner_bytes, "w") as archive:
+        archive.writestr("safe.md", "safe")
+    outer_path = tmp_path / f"{private_email}.zip"
+    with zipfile.ZipFile(outer_path, "w") as archive:
+        archive.writestr(f"nested/{private_email}.zip", inner_bytes.getvalue())
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    assert {(finding.path, finding.rule) for finding in findings} == {
+        (f"{private_email}.zip!<archive-name>", "non_allowlisted_email"),
+        (f"{private_email}.zip!nested/{private_email}.zip!<member-name>", "non_allowlisted_email"),
+        (
+            f"{private_email}.zip!nested/{private_email}.zip!<archive-name>",
+            "non_allowlisted_email",
+        ),
+    }
+
+
 @pytest.mark.parametrize(
     ("limit_name", "limit", "expected_error"),
     [
@@ -311,6 +387,23 @@ def test_scanner_detects_non_historical_private_manifest_reference(tmp_path: Pat
     rules = {finding.rule for finding in scan_tree(tmp_path, "michal24749@gmail.com")}
 
     assert "private_manifest_reference" in rules
+
+
+@pytest.mark.parametrize(
+    "historical_line",
+    [
+        "Private task repository: " + scanner.PRIVATE_REPOSITORY,
+        "migration baseline: " + scanner.PRIVATE_MANIFEST + " 5.6.0",
+    ],
+)
+def test_historical_reference_exceptions_do_not_apply_outside_repository_root_docs(
+    tmp_path: Path, historical_line: str
+) -> None:
+    (tmp_path / "package-content.md").write_text(historical_line, encoding="utf-8")
+
+    rules = {finding.rule for finding in scan_tree(tmp_path, "michal24749@gmail.com")}
+
+    assert rules & {"private_repo_reference", "private_manifest_reference"}
 
 
 def test_scanner_fails_closed_for_unreadable_directories(

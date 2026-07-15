@@ -76,6 +76,31 @@ def test_packaging_rejects_private_input_in_an_otherwise_valid_skill_tree(
     assert not destination.exists()
 
 
+@pytest.mark.parametrize(
+    "historical_line",
+    [
+        "Private task repository: " + "oloix888" + "/" + "Apex",
+        "migration baseline: " + "emma-workspace" + "-memory 5.6.0",
+    ],
+)
+def test_packaging_rejects_historical_private_values_in_built_skill_content(
+    tmp_path: Path, historical_line: str
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path / "build",
+        "0.1.0-beta.1",
+    )
+    (built / "historical-private-value.md").write_text(historical_line, encoding="utf-8")
+    destination = tmp_path / "minimal-skill.zip"
+
+    with pytest.raises(PublicSafetyError, match="historical-private-value.md:1"):
+        create_deterministic_zip(built, destination)
+
+    assert not destination.exists()
+
+
 def test_packaging_rejects_private_content_in_the_generated_archive(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

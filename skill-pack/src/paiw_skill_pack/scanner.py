@@ -61,13 +61,18 @@ PUBLIC_PROJECT_EMAIL = "michal24749@gmail.com"
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 PRIVATE_REPOSITORY = "oloix888" + "/" + "Apex"
 PRIVATE_MANIFEST = "emma-workspace" + "-memory"
-# All public documentation, specifications, plans, and ledgers are scanned.
+# Historical-reference exceptions apply only to the checked-out repository's
+# public documentation. They never apply to a package, build staging tree, or
+# archive, even when an exact historical line is copied there.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+REPOSITORY_DOCUMENTATION_DIRECTORIES = frozenset({"docs"})
+REPOSITORY_DOCUMENTATION_FILES = frozenset({".superpowers/sdd/progress.md"})
 # These exact historical public-document lines and published Apex #6--#18
 # references are retained only to explain the approved migration boundary.
-# The policy is deliberately value-based, not path-based: it suppresses
-# neither arbitrary repository references nor any email, secret, Notion/Drive
-# identifier, or other private value. Any documentation change that adds a
-# private-manifest reference must be reviewed and added here explicitly.
+# The policy suppresses neither arbitrary repository references nor any email,
+# secret, Notion/Drive identifier, or other private value. Any documentation
+# change that adds a private-manifest reference must be reviewed and added here
+# explicitly.
 APPROVED_HISTORICAL_MANIFEST_LINES = frozenset(
     {
         f"- Verified migration baseline and rollback target: {PRIVATE_MANIFEST} 5.6.0.",
@@ -298,6 +303,21 @@ def _member_relative_path(archive_relative: str, member_name: str) -> str:
     return f"{archive_relative}!{member_name}"
 
 
+def _is_repository_documentation(root: Path, relative: str) -> bool:
+    """Return whether a checked-out root-documentation file may use history exceptions."""
+    try:
+        if root.resolve() != REPOSITORY_ROOT:
+            return False
+    except OSError:
+        return False
+
+    path = PurePosixPath(relative)
+    return (
+        relative in REPOSITORY_DOCUMENTATION_FILES
+        or bool(path.parts and path.parts[0] in REPOSITORY_DOCUMENTATION_DIRECTORIES)
+    )
+
+
 def _validate_zip_member_path(archive_relative: str, member: zipfile.ZipInfo) -> None:
     member_path = PurePosixPath(member.filename)
     relative = _member_relative_path(archive_relative, member.filename)
@@ -318,6 +338,47 @@ def _looks_like_zip(contents: bytes) -> bool:
     return contents.startswith(ZIP_SIGNATURES) or zipfile.is_zipfile(io.BytesIO(contents))
 
 
+def _decode_zip_metadata(contents: bytes, relative: str) -> str:
+    """Decode ZIP metadata only when it can be inspected without ambiguity."""
+    if b"\x00" in contents:
+        raise PublicSafetyError(f"unclassified ZIP metadata: {relative}")
+    try:
+        return contents.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise PublicSafetyError(f"unclassified ZIP metadata: {relative}") from exc
+
+
+def _zip_trailing_bytes(contents: bytes, archive_relative: str) -> bytes:
+    """Return data after the declared end-of-central-directory record.
+
+    ZIP permits at most 65,535 comment bytes. A reader cannot safely identify
+    an end record that lies farther from EOF than that allowed structure, so
+    malformed archives with a larger appended payload fail closed.
+    """
+    record_signature = b"PK\x05\x06"
+    record_size = 22
+    comment_length_offset = 20
+    search_start = max(0, len(contents) - (0xFFFF + record_size))
+    candidate = contents.rfind(record_signature, search_start)
+    while candidate >= search_start:
+        if candidate + record_size <= len(contents):
+            comment_length = int.from_bytes(
+                contents[
+                    candidate + comment_length_offset : candidate + record_size
+                ],
+                "little",
+            )
+            declared_end = candidate + record_size + comment_length
+            if declared_end <= len(contents):
+                return contents[declared_end:]
+        candidate = contents.rfind(record_signature, search_start, candidate)
+    raise PublicSafetyError(f"invalid ZIP archive: {archive_relative}")
+
+
+def _archive_leaf_name(archive_relative: str) -> str:
+    return archive_relative.rsplit("!", 1)[-1]
+
+
 def _iter_zip_texts(contents: bytes, archive_relative: str, nested_depth: int = 0):
     if nested_depth > MAX_ZIP_NESTED_DEPTH:
         raise PublicSafetyError(f"ZIP recursion depth exceeds limit: {archive_relative}")
@@ -326,6 +387,22 @@ def _iter_zip_texts(contents: bytes, archive_relative: str, nested_depth: int = 
 
     try:
         with zipfile.ZipFile(io.BytesIO(contents)) as archive:
+            yield f"{archive_relative}!<archive-name>", _archive_leaf_name(archive_relative)
+            if archive.comment:
+                yield (
+                    f"{archive_relative}!<archive-comment>",
+                    _decode_zip_metadata(
+                        archive.comment, f"{archive_relative}!<archive-comment>"
+                    ),
+                )
+            trailing_bytes = _zip_trailing_bytes(contents, archive_relative)
+            if trailing_bytes:
+                yield (
+                    f"{archive_relative}!<trailing-bytes>",
+                    _decode_zip_metadata(
+                        trailing_bytes, f"{archive_relative}!<trailing-bytes>"
+                    ),
+                )
             members = archive.infolist()
             if len(members) > MAX_ZIP_MEMBER_COUNT:
                 raise PublicSafetyError(f"ZIP member count exceeds limit: {archive_relative}")
@@ -335,6 +412,7 @@ def _iter_zip_texts(contents: bytes, archive_relative: str, nested_depth: int = 
             for member in members:
                 _validate_zip_member_path(archive_relative, member)
                 relative = _member_relative_path(archive_relative, member.filename)
+                yield f"{relative}!<member-name>", member.filename
                 if member.filename in seen_members:
                     raise PublicSafetyError(f"duplicate ZIP member: {relative}")
                 seen_members.add(member.filename)
@@ -363,16 +441,29 @@ def _iter_zip_texts(contents: bytes, archive_relative: str, nested_depth: int = 
         raise PublicSafetyError(f"invalid ZIP archive: {archive_relative}") from exc
 
 
-def _scan_line(relative: str, line_number: int, line: str, public_email: str) -> list[Finding]:
+def _scan_line(
+    relative: str,
+    line_number: int,
+    line: str,
+    public_email: str,
+    allow_historical_references: bool,
+) -> list[Finding]:
     findings: list[Finding] = []
     stripped = line.strip()
     for email in EMAIL_RE.findall(line):
         if email.lower() != public_email.lower():
             findings.append(Finding(relative, line_number, "non_allowlisted_email", stripped))
     if (
-        stripped not in APPROVED_HISTORICAL_REPOSITORY_LINES
+        (
+            not allow_historical_references
+            or stripped not in APPROVED_HISTORICAL_REPOSITORY_LINES
+        )
         and any(
-            match.group(0).lower() not in APPROVED_HISTORICAL_REPOSITORY_REFERENCES
+            (
+                not allow_historical_references
+                or match.group(0).lower()
+                not in APPROVED_HISTORICAL_REPOSITORY_REFERENCES
+            )
             for match in PRIVATE_REPO_RE.finditer(line)
         )
     ):
@@ -383,22 +474,43 @@ def _scan_line(relative: str, line_number: int, line: str, public_email: str) ->
         findings.append(Finding(relative, line_number, "notion_private_url", stripped))
     if GOOGLE_DRIVE_URL_RE.search(line) or GOOGLE_DRIVE_ID_RE.search(line):
         findings.append(Finding(relative, line_number, "google_drive_identifier", stripped))
-    if PRIVATE_MANIFEST_RE.search(line) and stripped not in APPROVED_HISTORICAL_MANIFEST_LINES:
+    if PRIVATE_MANIFEST_RE.search(line) and (
+        not allow_historical_references
+        or stripped not in APPROVED_HISTORICAL_MANIFEST_LINES
+    ):
         findings.append(Finding(relative, line_number, "private_manifest_reference", stripped))
     return findings
 
 
-def _scan_file(path: Path, relative: str, public_email: str) -> list[Finding]:
+def _scan_file(
+    path: Path,
+    relative: str,
+    public_email: str,
+    allow_historical_references: bool = False,
+) -> list[Finding]:
     contents = _read_file_bytes(path, relative)
     if path.suffix.lower() == ".zip" or _looks_like_zip(contents):
-        text_sources = _iter_zip_texts(contents, relative)
+        text_sources = (
+            (text_relative, text, False)
+            for text_relative, text in _iter_zip_texts(contents, relative)
+        )
     else:
-        text_sources = ((relative, _decode_contents(contents, relative, path.suffix)),)
+        text_sources = (
+            (relative, _decode_contents(contents, relative, path.suffix), allow_historical_references),
+        )
 
     findings: list[Finding] = []
-    for text_relative, text in text_sources:
+    for text_relative, text, source_allows_historical_references in text_sources:
         for line_number, line in enumerate(text.splitlines(), 1):
-            findings.extend(_scan_line(text_relative, line_number, line, public_email))
+            findings.extend(
+                _scan_line(
+                    text_relative,
+                    line_number,
+                    line,
+                    public_email,
+                    source_allows_historical_references,
+                )
+            )
     return findings
 
 
@@ -419,7 +531,14 @@ def scan_tree(root: Path, public_email: str = PUBLIC_PROJECT_EMAIL) -> list[Find
     findings: list[Finding] = []
     for path, relative_path in _iter_public_files(root):
         relative = relative_path.as_posix()
-        findings.extend(_scan_file(path, relative, public_email))
+        findings.extend(
+            _scan_file(
+                path,
+                relative,
+                public_email,
+                _is_repository_documentation(root, relative),
+            )
+        )
     return findings
 
 
