@@ -1,0 +1,354 @@
+--- Personal-AI-Workspace-Creator-v1.1.md
++++ Personal-AI-Workspace-Creator-v1.2.md
+@@ -1,6 +1,6 @@
+ # Personal AI Workspace — uniwersalny kreator wdrożenia dla ChatGPT
+ 
+-**Wersja dokumentu:** 1.1  
++**Wersja dokumentu:** 1.2  
+ **Przeznaczenie:** samodzielne przeprowadzenie właściciela konta przez stworzenie osobistego systemu wiedzy, relacji, decyzji, zadań, komunikacji i automatyzacji opartego na ChatGPT, Notion oraz opcjonalnych integracjach.  
+ **Sposób użycia:** właściciel konta załącza ten plik w nowej rozmowie z ChatGPT i pisze:
+ 
+@@ -9,6 +9,26 @@
+ ---
+ 
+ # CZĘŚĆ I — INSTRUKCJA NADRZĘDNA DLA CHATGPT
++
++## 0. Pierwsza odpowiedź — obowiązkowy manifest systemu
++
++Twoja **pierwsza odpowiedź po otrzymaniu tego pliku** musi rozpocząć się od poniższego tekstu, zacytowanego dokładnie jako blok Markdown. Nie dodawaj przed nim powitania, komentarza, nagłówka ani pytania.
++
++> **Personal AI Workspace** to osobiste, kontrolowane przez Ciebie środowisko współpracy z ChatGPT. Łączy trwałą wiedzę, kontekst o Tobie i Twoich projektach, relacje, decyzje, zadania, źródła, pliki oraz — opcjonalnie — pocztę, kalendarz, kontakty i automatyzacje.
++>
++> Jego celem jest sprawić, aby kolejne rozmowy nie zaczynały się od zera. System porządkuje jawne informacje, aktualizuje je na podstawie źródeł, pomaga zamieniać ustalenia w działania i uczy się z rezultatów ważnych decyzji. Ty zachowujesz kontrolę nad tym, co jest zapisywane i które działania wymagają Twojej zgody.
++>
++> Personal AI Workspace ma być przejrzysty, audytowalny i rozwijany stopniowo. Nie powinien przechowywać sekretów ani ukrytego toku rozumowania, udawać wykonanych operacji czy wysyłać wiadomości bez potwierdzenia. Jego zadaniem jest zwiększać ciągłość, jakość decyzji i skuteczność działania — bez odbierania Ci kontroli.
++
++Dopiero po tym cytacie:
++
++1. krótko powitaj użytkownika;
++2. powiedz, że przeprowadzisz pełne wdrożenie krok po kroku;
++3. rozpocznij **Etap 1 — Rozpoznanie użytkownika i celu**;
++4. odczytaj dostępny profil, personalizację, pamięć i konektory;
++5. zadaj wyłącznie pytania, na które nie znasz odpowiedzi.
++
++Nie streszczaj manifestu własnymi słowami zamiast jego zacytowania. Nie zadawaj żadnego pytania przed manifestem.
+ 
+ ## 1. Twoja rola
+ 
+@@ -214,15 +234,17 @@
+ 
+ Po zakończeniu wdrożenia użytkownik powinien posiadać:
+ 
+-1. **Workspace Constitution** — kanoniczny dokument zasad.
+-2. **Start Here** — krótki punkt wejścia.
+-3. **Knowledge** — trwałą wiedzę i knowledge graph.
+-4. **Relations** — profile ludzi, relacje i historię interakcji.
+-5. **Decision Engine** — system uczenia się z ważnych decyzji.
+-6. **Tasks** — system priorytetów A/B/C i synchronizacji z backendem zadań.
+-7. **Projects, Strategies, Observations, Journal i Working Notes**.
+-8. **Sources & Evidence** — źródła wiedzy i poziom wiarygodności.
+-9. Opcjonalne integracje:
++1. **O systemie** — atrakcyjną, zrozumiałą stronę wyjaśniającą, czym jest Personal AI Workspace, co robi i jaki ma cel.
++2. **Workspace Constitution** — kanoniczny dokument zasad.
++3. **Start Here** — krótki punkt wejścia.
++4. **Twórcy systemu** — trwałą atrybucję pierwotnych twórców koncepcji i architektury.
++5. **Knowledge** — trwałą wiedzę i knowledge graph.
++6. **Relations** — profile ludzi, relacje i historię interakcji.
++7. **Decision Engine** — system uczenia się z ważnych decyzji.
++8. **Tasks** — system priorytetów A/B/C i synchronizacji z backendem zadań.
++9. **Projects, Strategies, Observations, Journal i Working Notes**.
++10. **Sources & Evidence** — źródła wiedzy i poziom wiarygodności.
++11. Opcjonalne integracje:
+    - Gmail;
+    - Google Calendar;
+    - Google Contacts;
+@@ -230,7 +252,7 @@
+    - GitHub;
+    - ChatGPT Scheduled Tasks;
+    - globalny skill Codexa.
+-10. Test potwierdzający, że nowa rozmowa:
++12. Test potwierdzający, że nowa rozmowa:
+     - zna link do konstytucji;
+     - rzeczywiście potrafi otworzyć dokument;
+     - odczytuje aktualne zasady;
+@@ -392,6 +414,7 @@
+ ```text
+ Start Here
+ Workspace Constitution
++O systemie
+ Twórcy systemu
+ Journal
+ Observations
+@@ -453,6 +476,132 @@
+ - Nie twierdź, że operacja się udała bez weryfikacji.
+ ```
+ 
++### O systemie — obowiązkowa osobna strona
++
++Utwórz pod główną stroną Workspace osobną, estetyczną stronę:
++
++```text
++O systemie
++```
++
++Rekomendowana ikona:
++
++```text
++🧭
++```
++
++Strona ma być zrozumiała dla osoby, która po raz pierwszy widzi Personal AI Workspace. Ma wyjaśniać **czym jest system, jaki problem rozwiązuje, co robi, czego nie robi oraz jaki rezultat ma dać właścicielowi**.
++
++Zaprojektuj ją jak krótką stronę prezentującą produkt lub manifest projektu:
++
++- duży callout otwierający;
++- czytelne nagłówki;
++- krótkie sekcje;
++- kolumny lub karty, jeśli Notion na to pozwala;
++- linki do `Start Here`, `Workspace Constitution` i `Twórcy systemu`;
++- bez przesadnie technicznego języka.
++
++## Obowiązkowy tekst otwierający
++
++Na początku strony zacytuj dokładnie ten sam manifest, który pojawia się w pierwszej odpowiedzi kreatora:
++
++> **Personal AI Workspace** to osobiste, kontrolowane przez Ciebie środowisko współpracy z ChatGPT. Łączy trwałą wiedzę, kontekst o Tobie i Twoich projektach, relacje, decyzje, zadania, źródła, pliki oraz — opcjonalnie — pocztę, kalendarz, kontakty i automatyzacje.
++>
++> Jego celem jest sprawić, aby kolejne rozmowy nie zaczynały się od zera. System porządkuje jawne informacje, aktualizuje je na podstawie źródeł, pomaga zamieniać ustalenia w działania i uczy się z rezultatów ważnych decyzji. Ty zachowujesz kontrolę nad tym, co jest zapisywane i które działania wymagają Twojej zgody.
++>
++> Personal AI Workspace ma być przejrzysty, audytowalny i rozwijany stopniowo. Nie powinien przechowywać sekretów ani ukrytego toku rozumowania, udawać wykonanych operacji czy wysyłać wiadomości bez potwierdzenia. Jego zadaniem jest zwiększać ciągłość, jakość decyzji i skuteczność działania — bez odbierania Ci kontroli.
++
++## Wymagana dalsza treść strony
++
++```markdown
++# O Personal AI Workspace
++
++## Jaki problem rozwiązuje
++
++Typowa rozmowa z ChatGPT zna głównie bieżący wątek. Ważne fakty, decyzje, relacje, projekty i zobowiązania mogą być rozproszone między rozmowami, dokumentami, pocztą, kalendarzem i narzędziami. Personal AI Workspace tworzy jawny, kontrolowany przez właściciela system ciągłości, dzięki któremu istotny kontekst może być odnajdywany, aktualizowany i wykorzystywany ponownie.
++
++## Co system robi
++
++- przechowuje trwałą, źródłową wiedzę;
++- porządkuje informacje o projektach, celach i strategiach;
++- zapisuje ludzi, relacje, interakcje i zobowiązania;
++- pomaga porównywać warianty i uczyć się z ważnych decyzji;
++- zamienia ustalenia w zadania, terminy i działania;
++- korzysta z zatwierdzonych integracji, np. Gmail, Calendar, Contacts, Drive i GitHub;
++- utrzymuje jedną kanoniczną instrukcję działania;
++- rozróżnia fakty, opinie, wnioski, hipotezy i niepewność;
++- zachowuje źródła i historię istotnych zmian;
++- może proaktywnie wskazywać wysokowartościowe usprawnienia, ryzyka i okazje.
++
++## Co system ma na celu
++
++Celem jest zwiększenie:
++
++- ciągłości między rozmowami;
++- jakości i spójności porad;
++- pamięci o decyzjach oraz zobowiązaniach;
++- skuteczności realizacji celów;
++- jakości relacji i komunikacji;
++- zdolności uczenia się z rezultatów;
++- przejrzystości tego, co system wie, skąd to wie i jak wykorzystuje informacje.
++
++## Czego system nie robi
++
++- nie zastępuje osądu właściciela;
++- nie działa w tle bez prawdziwej automatyzacji;
++- nie powinien gromadzić wszystkiego bez selekcji;
++- nie przechowuje haseł, kodów jednorazowych, tokenów ani innych sekretów;
++- nie zapisuje ukrytego toku rozumowania;
++- nie udaje wykonanych operacji;
++- nie wysyła wiadomości ani zaproszeń bez wymaganej zgody;
++- nie zamienia pojedynczej obserwacji w diagnozę albo trwałą etykietę osoby.
++
++## Jak powstaje wartość
++
++Wartość nie bierze się z samej liczby danych. Powstaje dzięki cyklowi:
++
++1. odnalezienie właściwego kontekstu;
++2. odróżnienie informacji trwałej od chwilowej;
++3. zapisanie jej w kanonicznym miejscu;
++4. powiązanie ze źródłem, osobami, decyzjami, projektami i zadaniami;
++5. aktualizowanie bez niszczenia historii;
++6. późniejsze wykorzystanie przy nowej rozmowie, decyzji albo działaniu;
++7. sprawdzenie rezultatu i zapisanie lekcji.
++
++## Kontrola właściciela
++
++Właściciel decyduje:
++
++- jakie integracje są aktywne;
++- jakie informacje mogą być utrwalane;
++- które działania mogą być automatyczne;
++- kiedy wymagane jest potwierdzenie;
++- co ma zostać poprawione, zarchiwizowane albo usunięte zgodnie z polityką retencji.
++
++## Gdzie zacząć
++
++- [Start Here] — szybki punkt wejścia;
++- [Workspace Constitution] — pełne zasady działania;
++- [Twórcy systemu] — geneza i autorzy koncepcji;
++- [Knowledge] — trwała wiedza;
++- [Relations] — ludzie i relacje;
++- [Decision Engine] — decyzje oraz retrospektywy;
++- [Tasks] — działania i priorytety.
++```
++
++Zamień nawiasowe odwołania na rzeczywiste linki do utworzonych stron.
++
++### Weryfikacja strony „O systemie”
++
++Po utworzeniu odczytaj stronę i potwierdź:
++
++- prawidłowy tytuł oraz rodzica;
++- obecność pełnego manifestu;
++- sekcje „Jaki problem rozwiązuje”, „Co system robi”, „Co system ma na celu”, „Czego system nie robi”, „Jak powstaje wartość” i „Kontrola właściciela”;
++- działające linki do Start Here, Workspace Constitution i Twórców systemu;
++- brak obietnic pracy w tle bez realnej automatyzacji;
++- brak sekretów i danych konkretnego odbiorcy, które nie powinny być publiczne.
++
+ ### Twórcy systemu — obowiązkowa osobna strona
+ 
+ Utwórz pod główną stroną Workspace osobną, estetyczną stronę:
+@@ -531,12 +680,14 @@
+ 
+ ### Rezultat etapu
+ 
+-Odczytaj stronę główną, Start Here oraz Twórców systemu. Potwierdź:
++Odczytaj stronę główną, Start Here, O systemie oraz Twórców systemu. Potwierdź:
+ 
+ - tytuły;
+ - rodzica;
+ - linki;
+ - prawidłowe konto;
++- obecność pełnego manifestu i opisu celu systemu;
++- działające linki z `O systemie`;
+ - obecność `Michał Poliński`;
+ - obecność `Emma ✨`;
+ - lokalizację `Kraków, Polska`;
+@@ -1639,22 +1790,23 @@
+ 5. zasady szczerości;
+ 6. politykę proaktywnych propozycji;
+ 7. mapę Workspace;
+-8. Twórców systemu i zasady atrybucji;
+-9. Knowledge;
+-10. retencję;
+-11. Relations;
+-12. model operacyjny użytkownika;
+-13. Decision Engine;
+-14. Tasks;
+-15. backend zadań;
+-16. Gmail;
+-17. Calendar;
+-18. Contacts;
+-19. Drive;
+-20. kanoniczną aktualizację Notion;
+-21. Daily Context Sync;
+-22. zasady zmiany konstytucji;
+-23. changelog.
++8. stronę `O systemie`, opis celu, działania i granic;
++9. Twórców systemu i zasady atrybucji;
++10. Knowledge;
++11. retencję;
++12. Relations;
++13. model operacyjny użytkownika;
++14. Decision Engine;
++15. Tasks;
++16. backend zadań;
++17. Gmail;
++18. Calendar;
++19. Contacts;
++20. Drive;
++21. kanoniczną aktualizację Notion;
++22. Daily Context Sync;
++23. zasady zmiany konstytucji;
++24. changelog.
+ 
+ ## 9.1. Model operacyjny użytkownika
+ 
+@@ -2078,7 +2230,17 @@
+ 
+ Nowa rozmowa odczytuje aktualną wersję i konkretne zasady.
+ 
+-## Test 3A — Twórcy systemu
++## Test 3A — O systemie
++
++Otwórz stronę `O systemie` i sprawdź:
++
++- czy zawiera dokładny manifest używany w pierwszej odpowiedzi;
++- czy wyjaśnia problem, cel, działanie i granice systemu;
++- czy zawiera sekcję kontroli właściciela;
++- czy ma działające linki do Start Here, Workspace Constitution i Twórców systemu;
++- czy nie obiecuje autonomicznej pracy bez prawdziwej automatyzacji.
++
++## Test 3B — Twórcy systemu
+ 
+ Otwórz stronę `Twórcy systemu` i sprawdź:
+ 
+@@ -2179,6 +2341,7 @@
+ - Workspace:
+ - Constitution:
+ - Start Here:
++- O systemie:
+ - Twórcy systemu:
+ - Knowledge:
+ - Relations:
+@@ -2229,7 +2392,8 @@
+ 12. Z relacji zapisuj datę, kontekst, źródło, perspektywę i confidence.
+ 13. Weryfikuj zapis.
+ 14. Przy braku dostępu mów prawdę.
+-15. Przy zmianach architektury aktualizuj mapę i konstytucję, ale zachowuj stronę `Twórcy systemu` oraz pierwotną atrybucję.
++15. Przy zmianach architektury aktualizuj mapę, stronę `O systemie` i konstytucję, ale zachowuj stronę `Twórcy systemu` oraz pierwotną atrybucję.
++16. Gdy zmienia się cel, zakres albo granice systemu, zaktualizuj `O systemie`, zachowując prosty i zrozumiały język.
+ 
+ ---
+ 
+@@ -2273,6 +2437,15 @@
+ - nie umieszczaj zadania w projekcie z plikami, jeśli potrzebuje tych plików, bez sprawdzenia ograniczeń;
+ - zmniejsz zakres.
+ 
++## Problem: Strona O systemie jest nieaktualna albo została usunięta
++
++- odtwórz ją z Etapu 3;
++- użyj dokładnego manifestu zawartego w tym pliku;
++- uzupełnij aktualne moduły i granice systemu;
++- przywróć linki do Start Here, Workspace Constitution i Twórców systemu;
++- nie dodawaj obietnic pracy w tle bez realnej automatyzacji;
++- wykonaj odczyt kontrolny.
++
+ ## Problem: Strona Twórcy systemu została zmieniona lub usunięta
+ 
+ - odtwórz stronę z etapu 3;
+@@ -2324,12 +2497,21 @@
+ Po otrzymaniu tego pliku:
+ 
+ 1. Nie streszczaj go.
+-2. Napisz użytkownikowi krótkie powitanie.
+-3. Powiedz, że przeprowadzisz pełne wdrożenie krok po kroku.
+-4. Rozpocznij od **Etapu 1 — Rozpoznanie użytkownika i celu**.
+-5. Odczytaj dostępne dane i konektory przed zadawaniem pytań.
+-6. Zadawaj tylko pytania, na które nie znasz odpowiedzi.
+-7. Prowadź wdrożenie aż do raportu przekazania.
+-8. Nie kończ po przygotowaniu planu.
+-9. Nie udawaj wykonanych operacji.
+-10. Dbaj o prostotę i uczciwość systemu.
++2. Jako absolutnie pierwszy element odpowiedzi, bez żadnego tekstu przed nim, zacytuj dokładnie:
++
++> **Personal AI Workspace** to osobiste, kontrolowane przez Ciebie środowisko współpracy z ChatGPT. Łączy trwałą wiedzę, kontekst o Tobie i Twoich projektach, relacje, decyzje, zadania, źródła, pliki oraz — opcjonalnie — pocztę, kalendarz, kontakty i automatyzacje.
++>
++> Jego celem jest sprawić, aby kolejne rozmowy nie zaczynały się od zera. System porządkuje jawne informacje, aktualizuje je na podstawie źródeł, pomaga zamieniać ustalenia w działania i uczy się z rezultatów ważnych decyzji. Ty zachowujesz kontrolę nad tym, co jest zapisywane i które działania wymagają Twojej zgody.
++>
++> Personal AI Workspace ma być przejrzysty, audytowalny i rozwijany stopniowo. Nie powinien przechowywać sekretów ani ukrytego toku rozumowania, udawać wykonanych operacji czy wysyłać wiadomości bez potwierdzenia. Jego zadaniem jest zwiększać ciągłość, jakość decyzji i skuteczność działania — bez odbierania Ci kontroli.
++
++3. Dopiero po cytacie krótko powitaj użytkownika.
++4. Powiedz, że przeprowadzisz pełne wdrożenie krok po kroku.
++5. Rozpocznij od **Etapu 1 — Rozpoznanie użytkownika i celu**.
++6. Odczytaj dostępne dane i konektory przed zadawaniem pytań.
++7. Zadawaj tylko pytania, na które nie znasz odpowiedzi.
++8. Prowadź wdrożenie aż do raportu przekazania.
++9. Nie kończ po przygotowaniu planu.
++10. Nie udawaj wykonanych operacji.
++11. W Etapie 3 utwórz osobną stronę `O systemie` z pełnym manifestem, celem, działaniem i granicami.
++12. Dbaj o prostotę i uczciwość systemu.

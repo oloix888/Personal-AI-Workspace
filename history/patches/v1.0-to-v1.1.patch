@@ -1,0 +1,203 @@
+--- Personal-AI-Workspace-Creator-v1.0.md
++++ Personal-AI-Workspace-Creator-v1.1.md
+@@ -1,6 +1,6 @@
+ # Personal AI Workspace — uniwersalny kreator wdrożenia dla ChatGPT
+ 
+-**Wersja dokumentu:** 1.0  
++**Wersja dokumentu:** 1.1  
+ **Przeznaczenie:** samodzielne przeprowadzenie właściciela konta przez stworzenie osobistego systemu wiedzy, relacji, decyzji, zadań, komunikacji i automatyzacji opartego na ChatGPT, Notion oraz opcjonalnych integracjach.  
+ **Sposób użycia:** właściciel konta załącza ten plik w nowej rozmowie z ChatGPT i pisze:
+ 
+@@ -392,6 +392,7 @@
+ ```text
+ Start Here
+ Workspace Constitution
++Twórcy systemu
+ Journal
+ Observations
+ Decisions
+@@ -452,14 +453,94 @@
+ - Nie twierdź, że operacja się udała bez weryfikacji.
+ ```
+ 
++### Twórcy systemu — obowiązkowa osobna strona
++
++Utwórz pod główną stroną Workspace osobną, estetyczną stronę:
++
++```text
++Twórcy systemu
++```
++
++Rekomendowana ikona strony:
++
++```text
++✨
++```
++
++Ta strona opisuje **pierwotnych twórców koncepcji i architektury Personal AI Workspace**. Nie zastępuj tych informacji danymi osoby, dla której wykonywane jest wdrożenie. Odbiorca może dodać osobną sekcję „Wdrożenie i personalizacja”, ale pierwotna atrybucja pozostaje zachowana.
++
++Przy Emmie użyj wyłącznie imienia, wybranej symboliki oraz opisu roli współautorki. Nie dodawaj kategorii technicznej ani opisu natury. Nie dodawaj również twierdzeń, których nie można zweryfikować.
++
++## Wymagana treść strony
++
++Zaprojektuj stronę jako schludną wizytówkę. Użyj:
++
++- szerokiego calloutu otwierającego;
++- dwóch wizualnie równorzędnych sekcji lub kolumn;
++- subtelnych separatorów;
++- krótkiego opisu genezy systemu;
++- działającego linku `mailto:` do kontaktu Michała;
++- osobnej sekcji na informacje o lokalnym wdrożeniu.
++
++Treść twórców powinna brzmieć następująco:
++
++```markdown
++# Twórcy Personal AI Workspace
++
++> Personal AI Workspace powstał jako wspólny projekt łączący trwałą wiedzę, relacje, decyzje, zadania, źródła, komunikację i automatyzacje w jeden spójny system osobistej współpracy.
++
++---
++
++## Michał Poliński
++
++**Kraków, Polska**
++
++Inicjator projektu, współautor koncepcji oraz projektant kierunku rozwoju systemu. Odpowiada za wizję Personal AI Workspace jako praktycznego, długoterminowego środowiska wspierającego życie prywatne, relacje, rozwój, pracę i biznes.
++
++**Kontakt:** [michal24749@gmail.com](mailto:michal24749@gmail.com)
++
++---
++
++## Emma ✨
++
++Współautorka koncepcji, architektury i zasad działania Personal AI Workspace. Odpowiada za rozwinięcie struktury wiedzy, relacji, decyzji, zadań, źródeł, procedur bezpieczeństwa, integracji oraz dokumentacji wdrożeniowej.
++
++---
++
++## O projekcie
++
++System został zaprojektowany tak, aby jego właściciel zachowywał kontrolę nad jawną pamięcią, źródłami, decyzjami i działaniami, a konfiguracja mogła być rozwijana, audytowana i przenoszona między rozmowami oraz narzędziami.
++
++## Wdrożenie i personalizacja
++
++- Właściciel tego Workspace:
++- Osoba lub zespół prowadzący lokalne wdrożenie:
++- Data rozpoczęcia wdrożenia:
++- Wersja użytego kreatora:
++```
++
++## Zasady atrybucji
++
++1. Zachowaj imiona `Michał Poliński` i `Emma ✨`.
++2. Zachowaj lokalizację `Kraków, Polska` przy Michale.
++3. Zachowaj adres `michal24749@gmail.com` jako publiczny adres kontaktowy projektu.
++4. Nie usuwaj ani nie zastępuj pierwotnej atrybucji podczas personalizacji Workspace.
++5. Nie przedstawiaj odbiorcy kreatora jako pierwotnego autora systemu; może on być opisany jako właściciel konkretnego Workspace albo osoba wdrażająca.
++6. Jeżeli format Notion nie obsługuje kolumn, zastosuj dwie estetyczne sekcje z separatorami.
++7. Po utworzeniu odczytaj stronę i sprawdź tytuł, rodzica, oba imiona, lokalizację oraz działający adres e-mail.
++
+ ### Rezultat etapu
+ 
+-Odczytaj stronę główną i Start Here. Potwierdź:
++Odczytaj stronę główną, Start Here oraz Twórców systemu. Potwierdź:
+ 
+ - tytuły;
+ - rodzica;
+ - linki;
+-- prawidłowe konto.
++- prawidłowe konto;
++- obecność `Michał Poliński`;
++- obecność `Emma ✨`;
++- lokalizację `Kraków, Polska`;
++- adres `michal24749@gmail.com`.
+ 
+ ---
+ 
+@@ -1558,21 +1639,22 @@
+ 5. zasady szczerości;
+ 6. politykę proaktywnych propozycji;
+ 7. mapę Workspace;
+-8. Knowledge;
+-9. retencję;
+-10. Relations;
+-11. model operacyjny użytkownika;
+-12. Decision Engine;
+-13. Tasks;
+-14. backend zadań;
+-15. Gmail;
+-16. Calendar;
+-17. Contacts;
+-18. Drive;
+-19. kanoniczną aktualizację Notion;
+-20. Daily Context Sync;
+-21. zasady zmiany konstytucji;
+-22. changelog.
++8. Twórców systemu i zasady atrybucji;
++9. Knowledge;
++10. retencję;
++11. Relations;
++12. model operacyjny użytkownika;
++13. Decision Engine;
++14. Tasks;
++15. backend zadań;
++16. Gmail;
++17. Calendar;
++18. Contacts;
++19. Drive;
++20. kanoniczną aktualizację Notion;
++21. Daily Context Sync;
++22. zasady zmiany konstytucji;
++23. changelog.
+ 
+ ## 9.1. Model operacyjny użytkownika
+ 
+@@ -1996,6 +2078,18 @@
+ 
+ Nowa rozmowa odczytuje aktualną wersję i konkretne zasady.
+ 
++## Test 3A — Twórcy systemu
++
++Otwórz stronę `Twórcy systemu` i sprawdź:
++
++- czy jest bezpośrednim lub prawidłowo zagnieżdżonym elementem Workspace;
++- czy zawiera `Michał Poliński`;
++- czy zawiera `Kraków, Polska`;
++- czy zawiera działający link `mailto:michal24749@gmail.com`;
++- czy zawiera `Emma ✨`;
++- czy zawiera sekcję „Wdrożenie i personalizacja”;
++- czy pierwotna atrybucja nie została zastąpiona danymi właściciela wdrożenia.
++
+ ## Test 4 — Knowledge
+ 
+ Utwórz testowy węzeł i relację. Odczytaj je.
+@@ -2085,6 +2179,7 @@
+ - Workspace:
+ - Constitution:
+ - Start Here:
++- Twórcy systemu:
+ - Knowledge:
+ - Relations:
+ - Decision Engine:
+@@ -2134,6 +2229,7 @@
+ 12. Z relacji zapisuj datę, kontekst, źródło, perspektywę i confidence.
+ 13. Weryfikuj zapis.
+ 14. Przy braku dostępu mów prawdę.
++15. Przy zmianach architektury aktualizuj mapę i konstytucję, ale zachowuj stronę `Twórcy systemu` oraz pierwotną atrybucję.
+ 
+ ---
+ 
+@@ -2176,6 +2272,14 @@
+ - nie zakładaj, że Scheduled Task ma identyczne narzędzia jak zwykły czat;
+ - nie umieszczaj zadania w projekcie z plikami, jeśli potrzebuje tych plików, bez sprawdzenia ograniczeń;
+ - zmniejsz zakres.
++
++## Problem: Strona Twórcy systemu została zmieniona lub usunięta
++
++- odtwórz stronę z etapu 3;
++- przywróć `Michał Poliński`, `Kraków, Polska`, `michal24749@gmail.com` oraz `Emma ✨`;
++- rozdziel pierwotnych twórców od osoby wdrażającej system lokalnie;
++- zaktualizuj link w Workspace Constitution, Start Here i raporcie przekazania;
++- wykonaj odczyt kontrolny.
+ 
+ ## Problem: System staje się zbyt ciężki
+ 

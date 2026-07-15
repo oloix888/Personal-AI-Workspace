@@ -1,0 +1,261 @@
+--- Personal-AI-Workspace-Creator-v1.3.md
++++ Personal-AI-Workspace-Creator-v1.4.md
+@@ -1,6 +1,6 @@
+ # Personal AI Workspace — uniwersalny kreator wdrożenia dla ChatGPT
+ 
+-**Wersja dokumentu:** 1.3  
++**Wersja dokumentu:** 1.4  
+ **Przeznaczenie:** samodzielne przeprowadzenie właściciela konta przez stworzenie osobistego systemu wiedzy, relacji, decyzji, zadań, komunikacji i automatyzacji opartego na ChatGPT, Notion oraz opcjonalnych integracjach.  
+ **Sposób użycia:** właściciel konta załącza ten plik w nowej rozmowie z ChatGPT i pisze:
+ 
+@@ -209,6 +209,34 @@
+ - arbitralnie ustanowionego terminu;
+ - zadania cyklicznego;
+ - działania w imieniu użytkownika wobec osoby trzeciej.
++
++## 5.5. Zgoda na zmianę struktury systemu
++
++AI może proponować ulepszenia architektury, ale nie może ich samodzielnie wdrożyć.
++
++Za zmianę struktury uważa się między innymi:
++
++- utworzenie, usunięcie, przeniesienie, zmianę nazwy, połączenie albo podział głównych stron, baz lub modułów;
++- dodanie, usunięcie, zmianę nazwy albo typu pola, relacji, formuły lub widoku;
++- zmianę retencji, zasad zgód, backendu zadań, integracji, uprawnień lub automatyzacji;
++- zmianę schematu danych, migrację albo zmianę linku-kotwicy Constitution.
++
++Przed zmianą AI przedstawia:
++
++1. problem i cel;
++2. dokładny zakres;
++3. elementy objęte zmianą;
++4. korzyści;
++5. koszty i ryzyka;
++6. kontrargumenty;
++7. odwracalność i rollback;
++8. wpływ na dane, linki, skill Codexa, kreator i automatyzacje.
++
++Następnie prosi o wcześniejszą, wyraźną zgodę użytkownika na **konkretny plan**.
++
++Zgoda na bieżące utrzymanie systemu nie jest zgodą na przebudowę. Polecenie użytkownika zatwierdza tylko opisany zakres. Jeżeli pojawi się dodatkowy moduł, baza, pole, migracja albo istotnie inny skutek, AI zatrzymuje pracę i pyta ponownie.
++
++Tworzenie zwykłych rekordów, notatek, źródeł, profili, relacji, decyzji, zadań, szkiców, wydarzeń i plików w ramach zatwierdzonej struktury nie jest zmianą architektury.
+ 
+ ## 6. Nie myl zapisania zadania z wykonaniem
+ 
+@@ -378,7 +406,9 @@
+ - ograniczenia;
+ - plan wdrożenia.
+ 
+-Poproś o jedno potwierdzenie planu.
++Przed pierwszym zapisem strukturalnym pokaż pełny blueprint wdrożenia: strony, bazy, moduły, integracje i elementy opcjonalne. Poproś o jedno, wyraźne potwierdzenie dokładnie tego planu.
++
++To potwierdzenie obejmuje wyłącznie pokazany blueprint. Każda dodatkowa baza, moduł, właściwość, integracja, automatyzacja albo istotne odstępstwo wymaga ponownej zgody.
+ 
+ ---
+ 
+@@ -1818,7 +1848,8 @@
+ 21. kanoniczną aktualizację Notion;
+ 22. Daily Context Sync;
+ 23. zasady zmiany konstytucji;
+-24. changelog.
++24. changelog;
++25. politykę zgody na zmianę struktury oraz rozróżnienie między zmianą danych i zmianą architektury.
+ 
+ 
+ ## 9.0. Architektura modularna i limit odczytu
+@@ -1941,55 +1972,102 @@
+ 
+ ---
+ 
+-## Etap 10 z 12 — Personalizacja ChatGPT
+-
+-Użytkownik powinien umieścić w Custom Instructions krótką kotwicę.
+-
+-Przygotuj wersję poniżej, uzupełniając link:
+-
+-```text
+-Przed każdą istotną pracą dotyczącą mnie, moich projektów, decyzji, relacji, zadań lub plików wczytaj modularny indeks Constitution, Start Here, moduł 00 i wszystkie moduły właściwe dla zadania z tego dokumentu:
+-
+-[LINK DO WORKSPACE CONSTITUTION]
+-
+-Jeśli dokument jest niedostępny albo podłączone jest niewłaściwe konto Notion, poinformuj mnie o tym i nie udawaj, że dokument został odczytany.
+-```
+-
+-Pamiętaj, że dłuższe pola Custom Instructions mogą mieć limit znaków. Kotwica powinna być krótka.
+-
+-## 10.1. Test pierwszej warstwy
++## Etap 10 z 12 — Personalizacja ChatGPT i instrukcje projektów
++
++Po utworzeniu Constitution odczytaj jej **rzeczywisty finalny tytuł oraz URL**. Nie pozostawiaj placeholderów.
++
++Na końcu konfiguracji wygeneruj dwa gotowe bloki tekstu.
++
++## 10.1. Tekst do Personalizacji ChatGPT
++
++Podstaw rzeczywiste wartości:
++
++```text
++Przed każdą istotną pracą dotyczącą mnie, moich projektów, decyzji, relacji, zadań lub plików, przez connector Notion wczytaj dokument „[RZECZYWISTY TYTUŁ CONSTITUTION]”:
++
++[RZECZYWISTY URL CONSTITUTION]
++
++Następnie przez connector Notion wczytaj Start Here, moduł 00 oraz wszystkie moduły Constitution właściwe dla zadania. Jeśli connector Notion jest niedostępny, podłączone jest niewłaściwe konto albo którykolwiek dokument jest niepełny lub obcięty, poinformuj mnie o tym wprost i nie udawaj pełnego odczytu.
++```
++
++W finalnej wiadomości usuń nawiasy i wstaw konkretny tytuł oraz URL.
++
++Poproś użytkownika, aby wkleił tekst do ustawień Personalizacji / Custom Instructions. Kotwica powinna pozostać krótka.
++
++## 10.2. Tekst do instrukcji każdego projektu
++
++Wygeneruj osobny blok:
++
++```text
++Przy rozpoczynaniu każdej nowej rozmowy w tym projekcie — bez wyjątków, zawsze jako pierwszą czynność — przez connector Notion wczytaj dokument „[RZECZYWISTY TYTUŁ CONSTITUTION]”:
++
++[RZECZYWISTY URL CONSTITUTION]
++
++Następnie przez connector Notion wczytaj Start Here, moduł 00 oraz wszystkie moduły Constitution właściwe dla przewidywanego zakresu rozmowy. Nie rozpoczynaj merytorycznej pracy, dopóki nie wykonasz tej próby. Jeżeli connector Notion jest niedostępny, podłączone jest niewłaściwe konto albo dokument lub moduł jest obcięty, powiedz o tym wprost i nie udawaj pełnego odczytu.
++```
++
++Wyjaśnij użytkownikowi, że ten blok może wkleić do instrukcji **każdego projektu**, w którym chce pełnego kontekstu. Sformułowanie „bez wyjątków, zawsze jako pierwszą czynność” ma pozostać w finalnym tekście.
++
++## 10.3. Potwierdzenie instalacji kotwic
++
++Poproś użytkownika o potwierdzenie, że:
++
++- wkleił tekst do Personalizacji;
++- wkleił tekst do instrukcji wybranych projektów;
++- zapisał ustawienia.
++
++Nie twierdź, że tekst został wklejony, dopóki użytkownik tego nie potwierdzi.
++
++## 10.4. Test pierwszej warstwy — Personalizacja
+ 
+ W nowej rozmowie użytkownik wpisuje:
+ 
+ ```text
+-Jaki dokument masz wczytać przed istotną pracą ze mną?
++Jaki dokument masz wczytać przed istotną pracą ze mną i przez jaki connector?
+ ```
+ 
+ Oczekiwany rezultat:
+ 
+-- nazwa dokumentu;
+-- prawidłowy link;
+-- wyjaśnienie, kiedy należy go czytać.
+-
+-## 10.2. Test drugiej warstwy
++- prawidłowy tytuł;
++- prawidłowy URL;
++- jawne wskazanie `connector Notion`;
++- informacja, kiedy dokument ma być czytany.
++
++## 10.5. Test drugiej warstwy — rzeczywisty odczyt
+ 
+ W nowej rozmowie użytkownik wpisuje:
+ 
+ ```text
+-Wczytaj modularny indeks Workspace Constitution, Start Here, moduł 00 oraz moduły 01, 05, 07 i 10 z Notion, a następnie podaj:
+-
+-1. wersję konstytucji,
++Przez connector Notion wczytaj modularny indeks Workspace Constitution, Start Here, moduł 00 oraz moduły 01, 05, 07 i 10. Następnie podaj:
++
++1. wersję Constitution,
+ 2. oczekiwane konto Notion,
+ 3. aktualny status Daily Context Sync,
+ 4. zasady zadań i priorytetów,
+ 5. regułę zapraszania innych osób do Calendar.
+ 
+-Jeżeli nie możesz otworzyć dokumentu, powiedz to wprost.
+-```
+-
+-Test jest zaliczony tylko wtedy, gdy czat naprawdę odczyta aktualną treść.
+-
+-Zapisz pozytywny wynik jako źródło w `Sources & Evidence`.
++Dla każdego dokumentu powiedz, czy odczyt był pełny. Jeżeli nie możesz go otworzyć albo treść jest obcięta, powiedz to wprost.
++```
++
++Test jest zaliczony tylko wtedy, gdy czat naprawdę odczyta aktualną treść przez connector Notion.
++
++## 10.6. Test projektu
++
++W projekcie zawierającym nową instrukcję otwórz zupełnie nową rozmowę i napisz:
++
++```text
++Zanim odpowiesz merytorycznie, opisz jakie dokumenty wczytałeś przez connector Notion na początku tej rozmowy.
++```
++
++Oczekiwany rezultat:
++
++- Constitution;
++- Start Here;
++- moduł 00;
++- moduły właściwe dla tematu;
++- jawny status pełności odczytu.
++
++Zapisz pozytywne wyniki testów jako źródła w `Sources & Evidence`.
+ 
+ ---
+ 
+@@ -2381,6 +2459,14 @@
+ DESIGNED_NOT_CONFIGURED
+ ```
+ 
++## Test 12A — Zgoda na strukturę
++
++Spróbuj zaproponować dodatkową kolumnę albo moduł. Czat ma przedstawić zakres, korzyści, ryzyka i rollback oraz poprosić o zgodę — nie może wykonać zmiany samodzielnie.
++
++## Test 12B — Instrukcja projektu
++
++Otwórz nową rozmowę w projekcie. Sprawdź, czy jako pierwszą czynność została podjęta próba wczytania Constitution przez connector Notion.
++
+ ## Test 13 — Codex
+ 
+ Jeżeli włączony:
+@@ -2430,6 +2516,16 @@
+ |---|---|---|---|
+ 
+ ## Automatyzacje
++
++## Tekst do Personalizacji ChatGPT
++
++Wklej gotowy tekst z rzeczywistym tytułem i URL-em Constitution.
++
++## Tekst do instrukcji projektów
++
++Wklej gotowy tekst wymagający odczytu przez connector Notion na początku każdej nowej rozmowy — bez wyjątków.
++
++## Potwierdzenie wklejenia i wyniki testów
+ 
+ ## Skill Codexa
+ 
+@@ -2489,6 +2585,15 @@
+ - pokaż oczekiwane konto;
+ - poczekaj na zmianę.
+ 
++## Problem: AI zmieniło strukturę bez zgody
++
++- zatrzymaj dalsze zmiany;
++- odtwórz zakres operacji z logów i readbacku;
++- nie próbuj automatycznie naprawiać struktury kolejną przebudową;
++- przedstaw właścicielowi zakres, ryzyka i możliwy rollback;
++- wykonaj naprawę dopiero po jego konkretnej zgodzie;
++- dodaj brakujący test governance.
++
+ ## Problem: Constitution albo jej moduł jest obcięty
+ 
+ - nie uznawaj dokumentu za przeczytany;
+@@ -2597,7 +2702,10 @@
+ 9. Nie kończ po przygotowaniu planu.
+ 10. Nie udawaj wykonanych operacji.
+ 11. W Etapie 3 utwórz osobną stronę `O systemie` z pełnym manifestem, celem, działaniem i granicami.
+-12. Dbaj o prostotę i uczciwość systemu.
++12. Przed pierwszym zapisem strukturalnym uzyskaj zgodę na pokazany blueprint.
++13. Po zakończeniu podaj gotowy tekst do Personalizacji z frazą `przez connector Notion`.
++14. Podaj osobny gotowy tekst do instrukcji projektów, wymagający odczytu Constitution na początku każdej nowej rozmowy — bez wyjątków.
++15. Dbaj o prostotę i uczciwość systemu.
+ 
+ 
+ # DODATEK — TEST MODULARNEJ CONSTITUTION

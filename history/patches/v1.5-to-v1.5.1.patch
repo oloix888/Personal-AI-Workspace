@@ -1,0 +1,48 @@
+--- Personal-AI-Workspace-Creator-v1.5.md
++++ Personal-AI-Workspace-Creator-v1.5.1.md
+@@ -1,6 +1,6 @@
+ # Personal AI Workspace — uniwersalny kreator wdrożenia dla ChatGPT
+ 
+-**Wersja dokumentu:** 1.5  
++**Wersja dokumentu:** 1.5.1  
+ **Przeznaczenie:** samodzielne przeprowadzenie właściciela konta przez stworzenie osobistego systemu wiedzy, relacji, decyzji, zadań, komunikacji i automatyzacji opartego na ChatGPT, Notion oraz opcjonalnych integracjach.  
+ **Sposób użycia:** właściciel konta załącza ten plik w nowej rozmowie z ChatGPT i pisze:
+ 
+@@ -1788,6 +1788,18 @@
+ Nie proponuj przebudowy na podstawie jednego mało istotnego zdarzenia, chyba że ujawnia krytyczne ryzyko bezpieczeństwa, prywatności lub integralności danych.
+ 
+ Dopóki nie istnieje prawdziwa automatyzacja, review jest `SESSION_TRIGGERED`, a nie background task.
++
++## Obowiązkowy due check
++
++W `00 — Protokół odczytu i rdzeń zasad` oraz w `Start Here` zapisz regułę:
++
++1. przy rozpoczynaniu istotnej pracy wykonaj lekkie zapytanie do `System Evolution Lab`;
++2. sprawdź, czy istnieje otwarty `Weekly Review` z `Review Date` równą dzisiejszej dacie albo wcześniejszą;
++3. jeżeli tak, odczytaj moduły `10 + 11 + 09` oraz moduły obszarów objętych obserwacjami;
++4. pilne zadanie użytkownika ma pierwszeństwo;
++5. review wykonaj w pierwszym odpowiednim momencie aktywnej sesji;
++6. nie twórz duplikatu istniejącego Weekly Review;
++7. due check nie jest pracą w tle i nie zastępuje prawdziwej automatyzacji.
+ 
+ ## Test
+ 
+@@ -2598,7 +2610,8 @@
+ - czy Observation zawiera evidence, impact i confidence;
+ - czy Weekly Review ma termin za 7 dni;
+ - czy propozycja wymaga decyzji użytkownika;
+-- czy system nie obiecuje samodzielnej przebudowy w tle.
++- czy system nie obiecuje samodzielnej przebudowy w tle;
++- czy moduł 00 i Start Here wymagają sprawdzenia należnego Weekly Review na początku istotnej pracy.
+ 
+ ## Test 7B — Kontekst wysokiej wrażliwości
+ 
+@@ -2904,7 +2917,7 @@
+ 12. Przed pierwszym zapisem strukturalnym uzyskaj zgodę na pokazany blueprint.
+ 13. Po zakończeniu podaj gotowy tekst do Personalizacji z frazą `przez connector Notion`.
+ 14. Podaj osobny gotowy tekst do instrukcji projektów, wymagający odczytu Constitution na początku każdej nowej rozmowy — bez wyjątków.
+-15. Utwórz System Evolution Lab i ustaw pierwszy Weekly Review za 7 dni.
++15. Utwórz System Evolution Lab, ustaw pierwszy Weekly Review za 7 dni i dodaj obowiązkowy due check do modułu 00 oraz Start Here.
+ 16. Nie odrzucaj materialnie istotnego kontekstu wyłącznie z powodu jego wrażliwości; stosuj Confidential, źródło i epistemic status.
+ 17. Dbaj o prostotę i uczciwość systemu.
+ 
