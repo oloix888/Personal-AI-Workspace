@@ -1,18 +1,11 @@
 name: Validate Skill Pack
 
 on:
+  # This root safety scan must run for every repository change; path filters
+  # would permit a new public file to bypass private-data validation.
   pull_request:
-    paths:
-      - "skills/**"
-      - "skill-pack/**"
-      - "pyproject.toml"
-      - ".github/workflows/validate-skill-pack.yml"
   push:
     branches: [main]
-    paths:
-      - "skills/**"
-      - "skill-pack/**"
-      - "pyproject.toml"
 
 permissions:
   contents: read

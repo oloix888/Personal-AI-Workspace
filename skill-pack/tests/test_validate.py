@@ -34,6 +34,31 @@ def test_external_parent_reference_is_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    ("filename", "contents", "expected_error"),
+    [
+        ("LICENSE", None, "missing LICENSE"),
+        ("NOTICE", "not the canonical attribution\n", "NOTICE missing required attribution"),
+    ],
+)
+def test_missing_or_invalid_legal_files_are_rejected(
+    tmp_path: Path, filename: str, contents: str | None, expected_error: str
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    target = built / filename
+    if contents is None:
+        target.unlink()
+    else:
+        target.write_text(contents, encoding="utf-8")
+
+    assert any(expected_error in error for error in validate_skill_root(built))
+
+
+@pytest.mark.parametrize(
     ("contents", "expected_error"),
     [
         ("interface: [unterminated\n", "invalid YAML"),

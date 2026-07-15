@@ -1,7 +1,9 @@
 from pathlib import Path
+import zipfile
 
 import pytest
 
+import paiw_skill_pack.scanner as scanner
 from paiw_skill_pack.scanner import PublicSafetyError, scan_tree
 
 FIXTURES = Path(__file__).parent / "fixtures" / "scanner"
@@ -94,6 +96,110 @@ def test_scanner_fails_closed_for_unclassified_non_utf8_files(tmp_path: Path) ->
     (tmp_path / "unclassified.data").write_bytes(b"\xff\xfe")
 
     with pytest.raises(PublicSafetyError, match="unclassified non-UTF-8 file: unclassified.data"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+def test_scanner_fails_closed_for_directory_symlinks(tmp_path: Path) -> None:
+    target = tmp_path / "external"
+    target.mkdir()
+    symlink = tmp_path / "linked"
+    try:
+        symlink.symlink_to(target, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlinks are unavailable on this platform: {exc}")
+
+    with pytest.raises(PublicSafetyError, match="unable to scan symlink: linked"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+@pytest.mark.parametrize(
+    ("filename", "contents"),
+    [
+        ("opaque.pdf", b"private.user" + b"@example.com"),
+        ("opaque.png", b"\x00private.user" + b"@example.com"),
+    ],
+)
+def test_scanner_scans_private_text_hidden_by_a_known_binary_suffix(
+    tmp_path: Path, filename: str, contents: bytes
+) -> None:
+    (tmp_path / filename).write_bytes(contents)
+
+    rules = {finding.rule for finding in scan_tree(tmp_path, "michal24749@gmail.com")}
+
+    assert "non_allowlisted_email" in rules
+
+
+def test_scanner_scans_zip_members(tmp_path: Path) -> None:
+    private_email = "private.user" + "@example.com"
+    with zipfile.ZipFile(tmp_path / "artifact.zip", "w") as archive:
+        archive.writestr("nested/private.md", private_email)
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    assert [(finding.path, finding.rule) for finding in findings] == [
+        ("artifact.zip!nested/private.md", "non_allowlisted_email")
+    ]
+
+
+def test_scanner_fails_closed_for_invalid_zip_archives(tmp_path: Path) -> None:
+    (tmp_path / "artifact.zip").write_bytes(b"not a ZIP archive")
+
+    with pytest.raises(PublicSafetyError, match="invalid ZIP archive: artifact.zip"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [Path(".superpowers/sdd/unlisted.md"), Path("docs/superpowers/unlisted.md")],
+)
+def test_scanner_scans_unlisted_governance_and_documentation_files(
+    tmp_path: Path, relative: Path
+) -> None:
+    private_email = "private.user" + "@example.com"
+    unsafe = tmp_path / relative
+    unsafe.parent.mkdir(parents=True)
+    unsafe.write_text(private_email, encoding="utf-8")
+
+    rules = {finding.rule for finding in scan_tree(tmp_path, "michal24749@gmail.com")}
+
+    assert "non_allowlisted_email" in rules
+
+
+def test_scanner_fails_closed_for_unreadable_directories(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    unreadable = tmp_path / "unreadable"
+
+    def walk_with_error(
+        root: Path, topdown: bool = True, onerror=None, followlinks: bool = False
+    ):
+        assert topdown is True
+        assert followlinks is False
+        assert onerror is not None
+        onerror(PermissionError(13, "Permission denied", str(unreadable)))
+        return iter(())
+
+    monkeypatch.setattr(scanner.os, "walk", walk_with_error)
+
+    with pytest.raises(PublicSafetyError, match="unable to scan directory"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+def test_scanner_fails_closed_for_unreadable_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    unreadable = tmp_path / "unreadable.md"
+    unreadable.write_text("safe", encoding="utf-8")
+    original_read_bytes = Path.read_bytes
+
+    def read_bytes_with_error(path: Path) -> bytes:
+        if path == unreadable:
+            raise PermissionError(13, "Permission denied", str(path))
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes_with_error)
+
+    with pytest.raises(PublicSafetyError, match="unable to read file: unreadable.md"):
         scan_tree(tmp_path, "michal24749@gmail.com")
 
 

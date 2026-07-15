@@ -14,6 +14,10 @@ REQUIRED_OPENAI_INTERFACE_FIELDS = (
     "brand_color",
     "default_prompt",
 )
+REQUIRED_LEGAL_MARKERS = {
+    "LICENSE": ("Apache License", "Version 2.0"),
+    "NOTICE": ("Personal AI Workspace", "Apache License, Version 2.0"),
+}
 
 
 def _validate_openai_metadata(path: Path) -> list[str]:
@@ -49,6 +53,29 @@ def _validate_openai_metadata(path: Path) -> list[str]:
     return errors
 
 
+def _validate_legal_files(root: Path) -> list[str]:
+    errors: list[str] = []
+    for filename, required_markers in REQUIRED_LEGAL_MARKERS.items():
+        path = root / filename
+        if not path.is_file():
+            errors.append(f"missing {filename}")
+            continue
+        try:
+            contents = path.read_text(encoding="utf-8")
+        except OSError:
+            errors.append(f"unable to read {filename}")
+            continue
+        except UnicodeDecodeError:
+            errors.append(f"{filename} must be UTF-8 text")
+            continue
+        if not all(marker in contents for marker in required_markers):
+            if filename == "NOTICE":
+                errors.append("NOTICE missing required attribution")
+            else:
+                errors.append("LICENSE missing Apache-2.0 text")
+    return errors
+
+
 def validate_skill_root(root: Path) -> list[str]:
     errors: list[str] = []
     root = root.resolve()
@@ -69,6 +96,7 @@ def validate_skill_root(root: Path) -> list[str]:
         errors.extend(_validate_openai_metadata(openai_metadata))
     if not (root / "VERSION").is_file():
         errors.append("missing VERSION")
+    errors.extend(_validate_legal_files(root))
 
     for markdown in sorted(root.rglob("*.md")):
         text = markdown.read_text(encoding="utf-8")

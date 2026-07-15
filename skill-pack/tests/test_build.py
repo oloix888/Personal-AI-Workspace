@@ -22,5 +22,7 @@ def test_build_vendors_shared_contract_and_is_deterministic(tmp_path: Path) -> N
 
     assert (first / "references/shared/contract/governance.md").is_file()
     assert (first / "references/shared/schemas/context-briefing.schema.json").is_file()
+    assert (first / "LICENSE").read_bytes() == (ROOT / "LICENSE").read_bytes()
+    assert (first / "NOTICE").read_bytes() == (ROOT / "NOTICE").read_bytes()
     assert (first / "VERSION").read_text().strip() == "0.1.0-beta.1"
     assert hash_tree(first) == hash_tree(second)

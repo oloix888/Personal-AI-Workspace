@@ -18,3 +18,11 @@ def test_python_package_is_importable() -> None:
     import paiw_skill_pack
 
     assert paiw_skill_pack.__version__ == "0.1.0-beta.1"
+
+
+def test_skill_pack_validation_workflow_covers_every_repository_change() -> None:
+    workflow = (ROOT / ".github/workflows/validate-skill-pack.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "paths" not in workflow

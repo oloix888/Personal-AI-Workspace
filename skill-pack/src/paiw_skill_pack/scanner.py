@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import io
 import os
 from pathlib import Path
+from pathlib import PurePosixPath
 import re
+import stat
+import zipfile
 
 # Public-root policy: inspect every regular UTF-8 text file, irrespective of
-# suffix. The exclusions are private VCS internals, generated environments or
-# caches, and implementation-governance records that intentionally quote
-# restricted identifiers while defining the boundary. Unknown non-text files
-# fail closed; only these established binary asset formats may be skipped.
+# suffix. The exclusions are private VCS internals and generated environments
+# or caches. Known binary formats are inspected as lossless Latin-1 text so
+# ASCII private identifiers cannot be hidden by a misleading extension.
 EXCLUDED_DIRECTORY_NAMES = frozenset(
     {
         ".git",
@@ -23,10 +26,26 @@ EXCLUDED_DIRECTORY_NAMES = frozenset(
         "node_modules",
     }
 )
-EXCLUDED_RELATIVE_DIRECTORIES = frozenset(
+# Public governance records are scanned by default. These exact approved
+# planning records intentionally quote restricted identifiers to document the
+# public/private boundary; do not replace this list with a directory-level
+# exclusion. New files in either public documentation tree remain scan scope.
+EXCLUDED_RELATIVE_FILES = frozenset(
     {
-        Path(".superpowers"),
-        Path("docs/superpowers"),
+        Path(".superpowers/sdd/progress.md"),
+        Path("docs/superpowers/plans/2026-07-15-capability-catalog-plugin-orchestration.md"),
+        Path("docs/superpowers/plans/2026-07-15-constitution-truncation-hardening.md"),
+        Path("docs/superpowers/plans/2026-07-15-live-bootstrap-evidence-task-reconciliation.md"),
+        Path("docs/superpowers/plans/2026-07-15-private-emma-workspace-adapter-v6.md"),
+        Path("docs/superpowers/plans/2026-07-15-skill-pack-foundation-build-pipeline.md"),
+        Path("docs/superpowers/specs/2026-07-15-autonomous-memory-capture-design.md"),
+        Path("docs/superpowers/specs/2026-07-15-capability-catalog-plugin-orchestration-design.md"),
+        Path("docs/superpowers/specs/2026-07-15-constitution-truncation-safety-addendum.md"),
+        Path("docs/superpowers/specs/2026-07-15-live-bootstrap-evidence-task-reconciliation-addendum.md"),
+        Path("docs/superpowers/specs/2026-07-15-one-time-disclosure-consent-addendum.md"),
+        Path("docs/superpowers/specs/2026-07-15-personal-ai-workspace-skill-pack-phase-1-design.md"),
+        Path("docs/superpowers/specs/2026-07-15-phase-1-release-scope-audit.md"),
+        Path("docs/superpowers/specs/PHASE-1-CODEX-ENTRYPOINT.md"),
     }
 )
 BINARY_SUFFIXES = frozenset(
@@ -100,6 +119,7 @@ GOOGLE_DRIVE_ID_RE = re.compile(
     r"\s*[:=]\s*[\"']?[A-Za-z0-9_-]{10,}"
 )
 PRIVATE_MANIFEST_RE = re.compile(r"\b" + re.escape(PRIVATE_MANIFEST) + r"\b", re.IGNORECASE)
+MAX_ZIP_MEMBER_SIZE = 10 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,16 +135,38 @@ class PublicSafetyError(RuntimeError):
 
 
 def _is_excluded_directory(relative: Path) -> bool:
-    return (
-        relative.name in EXCLUDED_DIRECTORY_NAMES
-        or relative in EXCLUDED_RELATIVE_DIRECTORIES
-    )
+    return relative.name in EXCLUDED_DIRECTORY_NAMES
+
+
+def _display_relative_path(root: Path, path: str | Path | None) -> str:
+    if path is None:
+        return str(root)
+    candidate = Path(path)
+    for base in (root, root.resolve()):
+        try:
+            return candidate.relative_to(base).as_posix()
+        except ValueError:
+            continue
+    return candidate.as_posix()
+
+
+def _raise_walk_error(root: Path, error: OSError) -> None:
+    location = _display_relative_path(root, error.filename)
+    raise PublicSafetyError(f"unable to scan directory: {location}") from error
 
 
 def _iter_public_files(root: Path):
-    for directory, directory_names, filenames in os.walk(root, followlinks=False):
+    for directory, directory_names, filenames in os.walk(
+        root,
+        followlinks=False,
+        onerror=lambda error: _raise_walk_error(root, error),
+    ):
         directory_path = Path(directory)
         relative_directory = directory_path.relative_to(root)
+        for name in directory_names:
+            relative = relative_directory / name
+            if (directory_path / name).is_symlink():
+                raise PublicSafetyError(f"unable to scan symlink: {relative.as_posix()}")
         directory_names[:] = sorted(
             name
             for name in directory_names
@@ -135,23 +177,77 @@ def _iter_public_files(root: Path):
             relative = path.relative_to(root)
             if path.is_symlink():
                 raise PublicSafetyError(f"unable to scan symlink: {relative.as_posix()}")
-            if path.is_file():
+            if path.is_file() and relative not in EXCLUDED_RELATIVE_FILES:
                 yield path, relative
 
 
-def _read_text_file(path: Path, relative: Path) -> str | None:
-    if path.suffix.lower() in BINARY_SUFFIXES:
-        return None
+def _read_file_bytes(path: Path, relative: str) -> bytes:
+    try:
+        return path.read_bytes()
+    except OSError as exc:
+        raise PublicSafetyError(f"unable to read file: {relative}") from exc
 
-    contents = path.read_bytes()
+
+def _decode_contents(contents: bytes, relative: str, suffix: str) -> str:
+    is_known_binary = suffix.lower() in BINARY_SUFFIXES
     if b"\x00" in contents:
-        raise PublicSafetyError(f"unclassified binary-like file: {relative.as_posix()}")
+        if is_known_binary:
+            return contents.decode("latin-1")
+        raise PublicSafetyError(f"unclassified binary-like file: {relative}")
+
     try:
         return contents.decode("utf-8")
     except UnicodeDecodeError as exc:
+        if is_known_binary:
+            return contents.decode("latin-1")
         raise PublicSafetyError(
-            f"unclassified non-UTF-8 file: {relative.as_posix()}"
+            f"unclassified non-UTF-8 file: {relative}"
         ) from exc
+
+
+def _member_relative_path(archive_relative: str, member_name: str) -> str:
+    return f"{archive_relative}!{member_name}"
+
+
+def _validate_zip_member_path(archive_relative: str, member: zipfile.ZipInfo) -> None:
+    member_path = PurePosixPath(member.filename)
+    relative = _member_relative_path(archive_relative, member.filename)
+    if (
+        not member.filename
+        or member_path.is_absolute()
+        or ".." in member_path.parts
+        or "\\" in member.filename
+    ):
+        raise PublicSafetyError(f"invalid ZIP member path: {relative}")
+    if stat.S_ISLNK(member.external_attr >> 16):
+        raise PublicSafetyError(f"unable to scan symlink: {relative}")
+
+
+def _iter_zip_texts(contents: bytes, archive_relative: str):
+    try:
+        with zipfile.ZipFile(io.BytesIO(contents)) as archive:
+            corrupt_member = archive.testzip()
+            if corrupt_member is not None:
+                relative = _member_relative_path(archive_relative, corrupt_member)
+                raise PublicSafetyError(f"corrupt ZIP member: {relative}")
+            seen_members: set[str] = set()
+            for member in archive.infolist():
+                _validate_zip_member_path(archive_relative, member)
+                relative = _member_relative_path(archive_relative, member.filename)
+                if member.filename in seen_members:
+                    raise PublicSafetyError(f"duplicate ZIP member: {relative}")
+                seen_members.add(member.filename)
+                if member.is_dir():
+                    continue
+                if member.file_size > MAX_ZIP_MEMBER_SIZE:
+                    raise PublicSafetyError(f"ZIP member exceeds size limit: {relative}")
+                yield relative, _decode_contents(
+                    archive.read(member), relative, Path(member.filename).suffix
+                )
+    except PublicSafetyError:
+        raise
+    except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
+        raise PublicSafetyError(f"invalid ZIP archive: {archive_relative}") from exc
 
 
 def _scan_line(relative: str, line_number: int, line: str, public_email: str) -> list[Finding]:
@@ -174,17 +270,22 @@ def _scan_line(relative: str, line_number: int, line: str, public_email: str) ->
 
 
 def scan_tree(root: Path, public_email: str) -> list[Finding]:
+    if root.is_symlink():
+        raise PublicSafetyError(f"unable to scan symlink: {root}")
     if not root.is_dir():
         raise PublicSafetyError(f"scan root is not a directory: {root}")
 
     findings: list[Finding] = []
     for path, relative_path in _iter_public_files(root):
-        text = _read_text_file(path, relative_path)
-        if text is None:
-            continue
         relative = relative_path.as_posix()
-        for line_number, line in enumerate(text.splitlines(), 1):
-            findings.extend(_scan_line(relative, line_number, line, public_email))
+        contents = _read_file_bytes(path, relative)
+        if path.suffix.lower() == ".zip":
+            text_sources = _iter_zip_texts(contents, relative)
+        else:
+            text_sources = ((relative, _decode_contents(contents, relative, path.suffix)),)
+        for text_relative, text in text_sources:
+            for line_number, line in enumerate(text.splitlines(), 1):
+                findings.extend(_scan_line(text_relative, line_number, line, public_email))
     return findings
 
 
