@@ -76,6 +76,122 @@ def test_scanner_detects_structured_connector_response_ids_without_flagging_unre
     }
 
 
+def test_scanner_recursively_detects_nested_notion_gmail_and_people_payloads(
+    tmp_path: Path,
+) -> None:
+    page_uuid = "123e4567-e89b-12d3-a456-426614174000"
+    database_uuid = "b" * 32
+    block_uuid = "323e4567-e89b-12d3-a456-426614174000"
+    (tmp_path / "connector-response.json").write_text(
+        "{\n"
+        '  "result": {\n'
+        '    "records": [\n'
+        "      {\n"
+        '        "object": "page",\n'
+        f'        "id": "{page_uuid}",\n'
+        '        "properties": {"Title": {"title": [{"plain_text": "Synthetic"}]}}\n'
+        "      },\n"
+        "      {\n"
+        '        "object": "database",\n'
+        f'        "id": "{database_uuid}",\n'
+        '        "properties": {"Status": {"type": "select"}}\n'
+        "      },\n"
+        "      {\n"
+        '        "object": "block",\n'
+        f'        "id": "{block_uuid}",\n'
+        '        "type": "paragraph"\n'
+        "      },\n"
+        "      {\n"
+        '        "object": "page",\n'
+        '        "properties": {"Title": {"title": [{"plain_text": "Synthetic partial response"}]}}\n'
+        "      },\n"
+        "      {\n"
+        '        "id": "synthetic-message",\n'
+        '        "threadId": "synthetic-thread",\n'
+        '        "snippet": "Synthetic private Gmail excerpt",\n'
+        '        "payload": {\n'
+        '          "headers": [{"name": "Subject", "value": "Synthetic subject"}],\n'
+        '          "body": {"data": "c3ludGhldGlj"}\n'
+        "        }\n"
+        "      },\n"
+        "      {\n"
+        '        "resourceName": "people/synthetic-contact",\n'
+        '        "names": [{"displayName": "Synthetic Contact"}],\n'
+        '        "relations": [{"type": "assistant", "person": "Synthetic Relation"}]\n'
+        "      }\n"
+        "    ]\n"
+        "  }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    rules = [finding.rule for finding in findings]
+    assert rules.count("notion_private_url") == 4
+    assert "gmail_connector_response" in rules
+    assert "people_connector_response" in rules
+    assert all("Synthetic private Gmail excerpt" not in finding.excerpt for finding in findings)
+
+
+def test_scanner_detects_nested_connector_payloads_in_yaml_and_zip_members(
+    tmp_path: Path,
+) -> None:
+    synthetic_contact_email = "synthetic.contact" + "@public.example"
+    payload = f"""\
+response:
+  thread:
+    id: synthetic-thread
+    historyId: synthetic-history
+    messages:
+      - id: synthetic-message
+        threadId: synthetic-thread
+        payload:
+          headers:
+            - name: Subject
+              value: Synthetic subject
+          body:
+            data: c3ludGhldGlj
+  contacts:
+    - resourceName: people/synthetic-contact
+      names:
+        - displayName: Synthetic Contact
+      emailAddresses:
+        - value: {synthetic_contact_email}
+"""
+    (tmp_path / "connector-response.yaml").write_text(payload, encoding="utf-8")
+    with zipfile.ZipFile(tmp_path / "connector-export.zip", "w") as archive:
+        archive.writestr("exports/response.yml", payload)
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    source_rules = {
+        finding.rule for finding in findings if finding.path == "connector-response.yaml"
+    }
+    archive_rules = {
+        finding.rule
+        for finding in findings
+        if finding.path == "connector-export.zip!exports/response.yml"
+    }
+    assert {"gmail_connector_response", "people_connector_response"} <= source_rules
+    assert {"gmail_connector_response", "people_connector_response"} <= archive_rules
+
+
+def test_scanner_allows_generic_fictional_json_without_connector_context(tmp_path: Path) -> None:
+    (tmp_path / "fictional.json").write_text(
+        "{\n"
+        '  "id": "fictional-record",\n'
+        '  "properties": {"title": "Synthetic"},\n'
+        '  "identity": {"displayName": "Synthetic Person"},\n'
+        '  "relationships": ["Synthetic Relation"],\n'
+        '  "excerpt": "Illustrative data only"\n'
+        "}\n",
+        encoding="utf-8",
+    )
+
+    assert scan_tree(tmp_path, "michal24749@gmail.com") == []
+
+
 def test_scanner_scans_every_relative_file_and_directory_path(tmp_path: Path) -> None:
     private_email = "private.user" + "@example.test"
     directory_with_private_email = tmp_path / "nested" / private_email

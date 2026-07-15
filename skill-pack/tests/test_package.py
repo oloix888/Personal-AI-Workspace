@@ -103,6 +103,35 @@ def test_packaging_rejects_private_input_in_an_otherwise_valid_skill_tree(
     assert not destination.exists()
 
 
+def test_packaging_rejects_nested_structured_connector_response_input(
+    tmp_path: Path,
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path / "build",
+        "0.1.0-beta.1",
+    )
+    (built / "connector-export.yaml").write_text(
+        "response:\n"
+        "  message:\n"
+        "    id: synthetic-message\n"
+        "    threadId: synthetic-thread\n"
+        "    snippet: Synthetic private Gmail excerpt\n"
+        "    payload:\n"
+        "      headers:\n"
+        "        - name: Subject\n"
+        "          value: Synthetic subject\n",
+        encoding="utf-8",
+    )
+    destination = tmp_path / "minimal-skill.zip"
+
+    with pytest.raises(PublicSafetyError, match="connector-export.yaml:3"):
+        create_deterministic_zip(built, destination)
+
+    assert not destination.exists()
+
+
 @pytest.mark.parametrize(
     "historical_line",
     [

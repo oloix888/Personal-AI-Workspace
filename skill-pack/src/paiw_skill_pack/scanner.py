@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import io
+import json
 import os
 from pathlib import Path
 from pathlib import PurePosixPath
 import re
 import stat
 import zipfile
+
+import yaml
+from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 # Public-root policy: inspect every regular UTF-8 text file, irrespective of
 # suffix. The exclusions are private VCS internals and generated environments
@@ -204,24 +208,25 @@ GOOGLE_DRIVE_ID_RE = re.compile(
     r"(?i)\b(?:folder[_ -]?id|drive[_ -]?(?:folder|file)?[_ -]?id|google[_ -]?drive[_ -]?id)\b"
     r"\s*[:=]\s*[\"']?[A-Za-z0-9_-]{10,}"
 )
-NOTION_PAGE_RESPONSE_RE = re.compile(
-    r'''(?isx)
-    \{
-    (?=[^{}]{0,4096}["']object["']\s*[:=]\s*["']page["'])
-    (?=[^{}]{0,4096}["']id["']\s*[:=]\s*["']?
-        (?P<id>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})
-        ["']?)
-    [^{}]{0,4096}\}
-    '''
+NOTION_RESPONSE_OBJECTS = frozenset({"page", "database", "block"})
+NOTION_IDENTIFIER_RE = re.compile(
+    r"(?i)^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
+    r"[0-9a-f]{4}-[0-9a-f]{12})$"
 )
-GOOGLE_DRIVE_FILE_RESPONSE_RE = re.compile(
-    r'''(?isx)
-    \{
-    (?=[^{}]{0,4096}["']kind["']\s*[:=]\s*["']drive\#file["'])
-    (?=[^{}]{0,4096}["']id["']\s*[:=]\s*["']?
-        (?P<id>[A-Za-z0-9_-]{10,})["']?)
-    [^{}]{0,4096}\}
-    '''
+GMAIL_MESSAGE_SENSITIVE_FIELDS = frozenset({"snippet", "raw", "body"})
+GMAIL_PAYLOAD_SENSITIVE_FIELDS = frozenset({"headers", "body", "parts"})
+PEOPLE_SENSITIVE_FIELDS = frozenset(
+    {
+        "names",
+        "emailaddresses",
+        "relations",
+        "phonenumbers",
+        "organizations",
+        "biographies",
+    }
+)
+STRUCTURED_FENCE_RE = re.compile(
+    r"(?ms)^[ \t]*```(?:json|yaml|yml)[ \t]*\r?$\n(.*?)^[ \t]*```[ \t]*\r?$"
 )
 PRIVATE_MANIFEST_RE = re.compile(r"\b" + re.escape(PRIVATE_MANIFEST) + r"\b", re.IGNORECASE)
 ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
@@ -537,29 +542,201 @@ def _scan_line(
     return findings
 
 
-def _connector_response_findings(relative: str, text: str) -> list[Finding]:
-    """Find IDs only when their connector response object establishes their meaning.
+def _normalise_structured_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.lower())
 
-    Bare UUIDs and arbitrary ``id`` fields are common public identifiers. These
-    patterns therefore require the same shallow structured object to declare a
-    Notion page or a Google Drive file before reporting the ID.
+
+def _mapping_values(node: Node) -> dict[str, Node]:
+    if not isinstance(node, MappingNode):
+        return {}
+    return {
+        _normalise_structured_key(key.value): value
+        for key, value in node.value
+        if isinstance(key, ScalarNode)
+    }
+
+
+def _scalar_value(node: Node | None) -> str | None:
+    if not isinstance(node, ScalarNode):
+        return None
+    return node.value
+
+
+def _iter_mapping_nodes(node: Node):
+    """Yield every mapping node once, including recursively nested values.
+
+    YAML aliases may make the composed document graph cyclic. Tracking node
+    identity preserves complete traversal without following an alias forever.
+    """
+    seen: set[int] = set()
+
+    def visit(current: Node):
+        if id(current) in seen:
+            return
+        seen.add(id(current))
+        if isinstance(current, MappingNode):
+            yield current
+            for key, value in current.value:
+                yield from visit(key)
+                yield from visit(value)
+        elif isinstance(current, SequenceNode):
+            for value in current.value:
+                yield from visit(value)
+
+    yield from visit(node)
+
+
+def _has_gmail_payload_content(node: Node | None) -> bool:
+    return bool(GMAIL_PAYLOAD_SENSITIVE_FIELDS & _mapping_values(node).keys())
+
+
+def _is_gmail_message(fields: dict[str, Node]) -> bool:
+    has_identity = bool(_scalar_value(fields.get("id"))) and bool(
+        _scalar_value(fields.get("threadid"))
+    )
+    if not has_identity:
+        return False
+    return bool(GMAIL_MESSAGE_SENSITIVE_FIELDS & fields.keys()) or _has_gmail_payload_content(
+        fields.get("payload")
+    )
+
+
+def _contains_gmail_message(node: Node) -> bool:
+    return any(_is_gmail_message(_mapping_values(item)) for item in _iter_mapping_nodes(node))
+
+
+def _is_gmail_thread(fields: dict[str, Node]) -> bool:
+    return (
+        bool(_scalar_value(fields.get("id")))
+        and bool(_scalar_value(fields.get("historyid")))
+        and fields.get("messages") is not None
+        and _contains_gmail_message(fields["messages"])
+    )
+
+
+def _redacted_connector_excerpt(kind: str) -> str:
+    return f"[redacted structured {kind} connector response]"
+
+
+def _finding_for_node(
+    relative: str,
+    node: Node,
+    line_offset: int,
+    rule: str,
+    kind: str,
+) -> Finding:
+    return Finding(
+        relative,
+        node.start_mark.line + 1 + line_offset,
+        rule,
+        _redacted_connector_excerpt(kind),
+    )
+
+
+def _connector_finding_for_mapping(
+    relative: str, node: MappingNode, line_offset: int
+) -> Finding | None:
+    fields = _mapping_values(node)
+    object_type = (_scalar_value(fields.get("object")) or "").lower()
+    identifier = _scalar_value(fields.get("id"))
+    has_notion_identifier = bool(identifier and NOTION_IDENTIFIER_RE.fullmatch(identifier))
+    if object_type in NOTION_RESPONSE_OBJECTS and (
+        has_notion_identifier or "properties" in fields
+    ):
+        return _finding_for_node(
+            relative,
+            fields["id"] if has_notion_identifier else node,
+            line_offset,
+            "notion_private_url",
+            f"Notion {object_type}",
+        )
+
+    if (
+        (_scalar_value(fields.get("kind")) or "").lower() == "drive#file"
+        and identifier is not None
+        and len(identifier) >= 10
+    ):
+        return _finding_for_node(
+            relative, fields["id"], line_offset, "google_drive_identifier", "Google Drive file"
+        )
+
+    if _is_gmail_message(fields):
+        return _finding_for_node(
+            relative, node, line_offset, "gmail_connector_response", "Gmail message"
+        )
+
+    if _is_gmail_thread(fields):
+        return _finding_for_node(
+            relative, node, line_offset, "gmail_connector_response", "Gmail thread"
+        )
+
+    resource_name = _scalar_value(fields.get("resourcename")) or ""
+    if resource_name.lower().startswith("people/") and PEOPLE_SENSITIVE_FIELDS & fields.keys():
+        return _finding_for_node(
+            relative, node, line_offset, "people_connector_response", "People contact"
+        )
+    return None
+
+
+def _compose_yaml_documents(text: str):
+    try:
+        yield from yaml.compose_all(text, Loader=yaml.SafeLoader)
+    except yaml.YAMLError:
+        return
+
+
+def _iter_embedded_json_documents(text: str):
+    decoder = json.JSONDecoder()
+    position = 0
+    while position < len(text):
+        starts = [index for index in (text.find("{", position), text.find("[", position)) if index >= 0]
+        if not starts:
+            return
+        start = min(starts)
+        try:
+            _, end = decoder.raw_decode(text[start:])
+        except json.JSONDecodeError:
+            position = start + 1
+            continue
+        try:
+            node = yaml.compose(text[start : start + end], Loader=yaml.SafeLoader)
+        except yaml.YAMLError:
+            position = start + 1
+            continue
+        if node is not None:
+            yield node, text.count("\n", 0, start)
+        position = start + end
+
+
+def _iter_structured_documents(text: str):
+    for node in _compose_yaml_documents(text):
+        if node is not None:
+            yield node, 0
+    for match in STRUCTURED_FENCE_RE.finditer(text):
+        line_offset = text.count("\n", 0, match.start(1))
+        for node in _compose_yaml_documents(match.group(1)):
+            if node is not None:
+                yield node, line_offset
+    yield from _iter_embedded_json_documents(text)
+
+
+def _connector_response_findings(relative: str, text: str) -> list[Finding]:
+    """Find nested connector responses without treating ordinary JSON as private.
+
+    Provider-specific signature combinations make copied connector payloads
+    sensitive even when they contain no standalone ID, email, or secret. The
+    parser considers structured JSON and YAML in every scanned text source,
+    including ZIP members and fenced payloads, and only reports a mapping when
+    that mapping itself establishes a Notion, Gmail, Google Drive, or People
+    response context.
     """
     findings: list[Finding] = []
-    for expression, rule in (
-        (NOTION_PAGE_RESPONSE_RE, "notion_private_url"),
-        (GOOGLE_DRIVE_FILE_RESPONSE_RE, "google_drive_identifier"),
-    ):
-        for match in expression.finditer(text):
-            identifier_offset = match.start("id")
-            line_number = text.count("\n", 0, identifier_offset) + 1
-            line_start = text.rfind("\n", 0, identifier_offset) + 1
-            line_end = text.find("\n", identifier_offset)
-            if line_end < 0:
-                line_end = len(text)
-            findings.append(
-                Finding(relative, line_number, rule, text[line_start:line_end].strip())
-            )
-    return findings
+    for document, line_offset in _iter_structured_documents(text):
+        for node in _iter_mapping_nodes(document):
+            finding = _connector_finding_for_mapping(relative, node, line_offset)
+            if finding is not None:
+                findings.append(finding)
+    return list(dict.fromkeys(findings))
 
 
 def _scan_relative_path(relative: Path, public_email: str) -> list[Finding]:
