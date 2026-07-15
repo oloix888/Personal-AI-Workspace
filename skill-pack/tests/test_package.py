@@ -56,6 +56,33 @@ def test_packaging_rejects_an_invalid_skill_tree_before_creating_an_archive(
     assert not destination.exists()
 
 
+@pytest.mark.parametrize(
+    ("filename", "contents"),
+    [
+        ("LICENSE", "Apache License\nVersion 2.0\n"),
+        ("NOTICE", "Personal AI Workspace\nApache License, Version 2.0\n"),
+    ],
+)
+def test_packaging_rejects_marker_only_legal_file_substitutions(
+    tmp_path: Path, filename: str, contents: str
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path / "build",
+        "0.1.0-beta.1",
+    )
+    (built / filename).write_text(contents, encoding="utf-8")
+    destination = tmp_path / "minimal-skill.zip"
+
+    with pytest.raises(
+        ValueError, match=f"{filename} does not match canonical repository legal file"
+    ):
+        create_deterministic_zip(built, destination)
+
+    assert not destination.exists()
+
+
 def test_packaging_rejects_private_input_in_an_otherwise_valid_skill_tree(
     tmp_path: Path,
 ) -> None:

@@ -37,10 +37,13 @@ REQUIRED_OPENAI_INTERFACE_FIELDS = (
     "brand_color",
     "default_prompt",
 )
+CANONICAL_LEGAL_ROOT = Path(__file__).resolve().parents[3]
+CANONICAL_LEGAL_FILENAMES = ("LICENSE", "NOTICE")
 REQUIRED_LEGAL_MARKERS = {
     "LICENSE": ("Apache License", "Version 2.0"),
     "NOTICE": ("Personal AI Workspace", "Apache License, Version 2.0"),
 }
+WINDOWS_DRIVE_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 class _HTMLLinkParser(HTMLParser):
@@ -89,6 +92,15 @@ def _validate_link_target(root: Path, markdown: Path, target: str) -> str | None
         return None
 
     parsed = urlsplit(target)
+    if (
+        parsed.scheme.lower() == "file"
+        or target.startswith(("//", "\\\\"))
+        or WINDOWS_DRIVE_PATH_RE.match(target)
+    ):
+        return (
+            f"{markdown.relative_to(root)} local or host filesystem link is not allowed: "
+            f"{target}"
+        )
     if parsed.scheme or parsed.netloc:
         return None
     clean = unquote(parsed.path)
@@ -140,24 +152,34 @@ def _validate_openai_metadata(path: Path) -> list[str]:
 
 def _validate_legal_files(root: Path) -> list[str]:
     errors: list[str] = []
-    for filename, required_markers in REQUIRED_LEGAL_MARKERS.items():
+    for filename in CANONICAL_LEGAL_FILENAMES:
         path = root / filename
         if not path.is_file():
             errors.append(f"missing {filename}")
             continue
         try:
-            contents = path.read_text(encoding="utf-8")
+            actual = path.read_bytes()
         except OSError:
             errors.append(f"unable to read {filename}")
             continue
+        try:
+            contents = actual.decode("utf-8")
         except UnicodeDecodeError:
             errors.append(f"{filename} must be UTF-8 text")
             continue
-        if not all(marker in contents for marker in required_markers):
+        if not all(marker in contents for marker in REQUIRED_LEGAL_MARKERS[filename]):
             if filename == "NOTICE":
                 errors.append("NOTICE missing required attribution")
             else:
                 errors.append("LICENSE missing Apache-2.0 text")
+        canonical_path = CANONICAL_LEGAL_ROOT / filename
+        try:
+            canonical = canonical_path.read_bytes()
+        except OSError:
+            errors.append(f"unable to read canonical {filename}")
+            continue
+        if actual != canonical:
+            errors.append(f"{filename} does not match canonical repository legal file")
     return errors
 
 

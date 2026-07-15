@@ -49,6 +49,53 @@ def test_scanner_detects_private_notion_and_drive_references_in_toml(tmp_path: P
     assert "google_drive_identifier" in rules
 
 
+def test_scanner_detects_structured_connector_response_ids_without_flagging_unrelated_uuids(
+    tmp_path: Path,
+) -> None:
+    notion_page_uuid = "123e4567-e89b-12d3-a456-426614174000"
+    unrelated_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    synthetic_file_value = "1AbCdEfGhIjKlMnOp" + "QrStUvWxYz012345"
+    (tmp_path / "connector-response.json").write_text(
+        "{\n"
+        '  "object": "page",\n'
+        f'  "id": "{notion_page_uuid}"\n'
+        "}\n"
+        "{\n"
+        '  "kind": "drive#file",\n'
+        f'  "id": "{synthetic_file_value}"\n'
+        "}\n"
+        f'unrelated_uuid = "{unrelated_uuid}"\n',
+        encoding="utf-8",
+    )
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    assert {(item.line, item.rule) for item in findings} == {
+        (3, "notion_private_url"),
+        (7, "google_drive_identifier"),
+    }
+
+
+def test_scanner_scans_every_relative_file_and_directory_path(tmp_path: Path) -> None:
+    private_email = "private.user" + "@example.test"
+    directory_with_private_email = tmp_path / "nested" / private_email
+    directory_with_private_email.mkdir(parents=True)
+    private_repo_path = tmp_path / "oloix888" / "Apex"
+    private_repo_path.mkdir(parents=True)
+    synthetic_folder_value = "1AbCdEfGh" + "IjKlMnOp"
+    drive_folder_path = "folder" + f"_id={synthetic_folder_value}"
+    (tmp_path / drive_folder_path).write_text("safe", encoding="utf-8")
+    private_repository = "/".join(("oloix888", "Apex"))
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    assert {(item.path, item.rule) for item in findings} >= {
+        (f"nested/{private_email}", "non_allowlisted_email"),
+        (private_repository, "private_repo_reference"),
+        (drive_folder_path, "google_drive_identifier"),
+    }
+
+
 @pytest.mark.parametrize(
     ("filename", "key_parts", "separator", "value_parts"),
     [
@@ -364,6 +411,7 @@ def test_scanner_scans_zip_archive_and_member_names_at_every_nesting_level(
     findings = scan_tree(tmp_path, "michal24749@gmail.com")
 
     assert {(finding.path, finding.rule) for finding in findings} == {
+        (f"{private_email}.zip", "non_allowlisted_email"),
         (f"{private_email}.zip!<archive-name>", "non_allowlisted_email"),
         (f"{private_email}.zip!nested/{private_email}.zip!<member-name>", "non_allowlisted_email"),
         (

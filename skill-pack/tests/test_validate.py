@@ -85,6 +85,36 @@ def test_external_mailto_fragment_and_internal_markdown_html_links_are_allowed(
 
 
 @pytest.mark.parametrize(
+    "reference",
+    [
+        "[file-uri](file:///tmp/private.md)",
+        "[protocol-relative](//private.example.test/secret.md)",
+        r"[unc](\\\\private-host\\share\\secret.md)",
+        r"[windows-drive](C:\\private\\secret.md)",
+        '<a href="file:///tmp/private.md">file URI</a>',
+    ],
+)
+def test_local_or_hosted_filesystem_link_forms_are_rejected(
+    tmp_path: Path, reference: str
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "SKILL.md").write_text(
+        (built / "SKILL.md").read_text(encoding="utf-8") + f"\n{reference}\n",
+        encoding="utf-8",
+    )
+
+    assert any(
+        "local or host filesystem link is not allowed" in error
+        for error in validate_skill_root(built)
+    )
+
+
+@pytest.mark.parametrize(
     ("filename", "contents", "expected_error"),
     [
         ("LICENSE", None, "missing LICENSE"),
@@ -107,6 +137,29 @@ def test_missing_or_invalid_legal_files_are_rejected(
         target.write_text(contents, encoding="utf-8")
 
     assert any(expected_error in error for error in validate_skill_root(built))
+
+
+@pytest.mark.parametrize(
+    ("filename", "contents"),
+    [
+        ("LICENSE", "Apache License\nVersion 2.0\n"),
+        ("NOTICE", "Personal AI Workspace\nApache License, Version 2.0\n"),
+    ],
+)
+def test_marker_only_legal_file_substitutions_are_rejected(
+    tmp_path: Path, filename: str, contents: str
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / filename).write_text(contents, encoding="utf-8")
+
+    assert f"{filename} does not match canonical repository legal file" in validate_skill_root(
+        built
+    )
 
 
 @pytest.mark.parametrize(

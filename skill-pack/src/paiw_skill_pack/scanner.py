@@ -204,6 +204,25 @@ GOOGLE_DRIVE_ID_RE = re.compile(
     r"(?i)\b(?:folder[_ -]?id|drive[_ -]?(?:folder|file)?[_ -]?id|google[_ -]?drive[_ -]?id)\b"
     r"\s*[:=]\s*[\"']?[A-Za-z0-9_-]{10,}"
 )
+NOTION_PAGE_RESPONSE_RE = re.compile(
+    r'''(?isx)
+    \{
+    (?=[^{}]{0,4096}["']object["']\s*[:=]\s*["']page["'])
+    (?=[^{}]{0,4096}["']id["']\s*[:=]\s*["']?
+        (?P<id>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})
+        ["']?)
+    [^{}]{0,4096}\}
+    '''
+)
+GOOGLE_DRIVE_FILE_RESPONSE_RE = re.compile(
+    r'''(?isx)
+    \{
+    (?=[^{}]{0,4096}["']kind["']\s*[:=]\s*["']drive\#file["'])
+    (?=[^{}]{0,4096}["']id["']\s*[:=]\s*["']?
+        (?P<id>[A-Za-z0-9_-]{10,})["']?)
+    [^{}]{0,4096}\}
+    '''
+)
 PRIVATE_MANIFEST_RE = re.compile(r"\b" + re.escape(PRIVATE_MANIFEST) + r"\b", re.IGNORECASE)
 ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
 # Archive inspection is deliberately bounded. Limits apply to each archive in
@@ -253,7 +272,7 @@ def _raise_walk_error(root: Path, error: OSError) -> None:
     raise PublicSafetyError(f"unable to scan directory: {location}") from error
 
 
-def _iter_public_files(root: Path):
+def _iter_public_paths(root: Path):
     for directory, directory_names, filenames in os.walk(
         root,
         followlinks=False,
@@ -265,6 +284,7 @@ def _iter_public_files(root: Path):
             relative = relative_directory / name
             if (directory_path / name).is_symlink():
                 raise PublicSafetyError(f"unable to scan symlink: {relative.as_posix()}")
+            yield None, relative
         directory_names[:] = sorted(
             name
             for name in directory_names
@@ -275,8 +295,7 @@ def _iter_public_files(root: Path):
             relative = path.relative_to(root)
             if path.is_symlink():
                 raise PublicSafetyError(f"unable to scan symlink: {relative.as_posix()}")
-            if path.is_file():
-                yield path, relative
+            yield path if path.is_file() else None, relative
 
 
 def _read_file_bytes(path: Path, relative: str) -> bytes:
@@ -518,6 +537,36 @@ def _scan_line(
     return findings
 
 
+def _connector_response_findings(relative: str, text: str) -> list[Finding]:
+    """Find IDs only when their connector response object establishes their meaning.
+
+    Bare UUIDs and arbitrary ``id`` fields are common public identifiers. These
+    patterns therefore require the same shallow structured object to declare a
+    Notion page or a Google Drive file before reporting the ID.
+    """
+    findings: list[Finding] = []
+    for expression, rule in (
+        (NOTION_PAGE_RESPONSE_RE, "notion_private_url"),
+        (GOOGLE_DRIVE_FILE_RESPONSE_RE, "google_drive_identifier"),
+    ):
+        for match in expression.finditer(text):
+            identifier_offset = match.start("id")
+            line_number = text.count("\n", 0, identifier_offset) + 1
+            line_start = text.rfind("\n", 0, identifier_offset) + 1
+            line_end = text.find("\n", identifier_offset)
+            if line_end < 0:
+                line_end = len(text)
+            findings.append(
+                Finding(relative, line_number, rule, text[line_start:line_end].strip())
+            )
+    return findings
+
+
+def _scan_relative_path(relative: Path, public_email: str) -> list[Finding]:
+    rendered = relative.as_posix()
+    return _scan_line(rendered, 1, rendered, public_email, False)
+
+
 def _scan_file(
     path: Path,
     relative: str,
@@ -537,6 +586,7 @@ def _scan_file(
 
     findings: list[Finding] = []
     for text_relative, text, source_allows_historical_references in text_sources:
+        findings.extend(_connector_response_findings(text_relative, text))
         for line_number, line in enumerate(text.splitlines(), 1):
             findings.extend(
                 _scan_line(
@@ -565,8 +615,11 @@ def scan_tree(root: Path, public_email: str = PUBLIC_PROJECT_EMAIL) -> list[Find
         raise PublicSafetyError(f"scan root is not a directory: {root}")
 
     findings: list[Finding] = []
-    for path, relative_path in _iter_public_files(root):
+    for path, relative_path in _iter_public_paths(root):
         relative = relative_path.as_posix()
+        findings.extend(_scan_relative_path(relative_path, public_email))
+        if path is None:
+            continue
         findings.extend(
             _scan_file(
                 path,
