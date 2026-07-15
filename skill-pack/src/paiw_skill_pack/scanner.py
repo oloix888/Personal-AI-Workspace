@@ -214,6 +214,10 @@ MAX_ZIP_MEMBER_COUNT = 1_024
 MAX_ZIP_MEMBER_SIZE = 10 * 1024 * 1024
 MAX_ZIP_TOTAL_UNCOMPRESSED_SIZE = 50 * 1024 * 1024
 MAX_ZIP_NESTED_DEPTH = 3
+# ZIP headers use 16-bit metadata lengths. Cap individual member metadata at
+# 32 KiB so a malicious archive cannot use every format-allowed byte without
+# inspection.
+MAX_ZIP_MEMBER_METADATA_SIZE = 32 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -348,6 +352,30 @@ def _decode_zip_metadata(contents: bytes, relative: str) -> str:
         raise PublicSafetyError(f"unclassified ZIP metadata: {relative}") from exc
 
 
+def _decode_zip_member_metadata(contents: bytes, relative: str) -> str:
+    if len(contents) > MAX_ZIP_MEMBER_METADATA_SIZE:
+        raise PublicSafetyError(f"ZIP metadata exceeds size limit: {relative}")
+    return _decode_zip_metadata(contents, relative)
+
+
+def _iter_zip_member_extra_metadata(member: zipfile.ZipInfo, relative: str):
+    """Yield decoded extra-field values after validating their ZIP structure."""
+    extra = member.extra
+    offset = 0
+    while offset < len(extra):
+        if len(extra) - offset < 4:
+            raise PublicSafetyError(f"malformed ZIP metadata: {relative}!<member-extra>")
+        field_id = int.from_bytes(extra[offset : offset + 2], "little")
+        field_size = int.from_bytes(extra[offset + 2 : offset + 4], "little")
+        value_start = offset + 4
+        value_end = value_start + field_size
+        location = f"{relative}!<member-extra:0x{field_id:04x}>"
+        if value_end > len(extra):
+            raise PublicSafetyError(f"malformed ZIP metadata: {location}")
+        yield location, _decode_zip_member_metadata(extra[value_start:value_end], location)
+        offset = value_end
+
+
 def _zip_trailing_bytes(contents: bytes, archive_relative: str) -> bytes:
     """Return data after the declared end-of-central-directory record.
 
@@ -413,6 +441,14 @@ def _iter_zip_texts(contents: bytes, archive_relative: str, nested_depth: int = 
                 _validate_zip_member_path(archive_relative, member)
                 relative = _member_relative_path(archive_relative, member.filename)
                 yield f"{relative}!<member-name>", member.filename
+                if member.comment:
+                    yield (
+                        f"{relative}!<member-comment>",
+                        _decode_zip_member_metadata(
+                            member.comment, f"{relative}!<member-comment>"
+                        ),
+                    )
+                yield from _iter_zip_member_extra_metadata(member, relative)
                 if member.filename in seen_members:
                     raise PublicSafetyError(f"duplicate ZIP member: {relative}")
                 seen_members.add(member.filename)

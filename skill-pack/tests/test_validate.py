@@ -34,6 +34,57 @@ def test_external_parent_reference_is_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    "reference",
+    [
+        "[outside]: ../secret.md",
+        "[outside]: <../secret.md> \"Optional title\"",
+        '<a href="../secret.md">outside</a>',
+        '<img src="../secret.png" alt="outside">',
+        '<object data="../secret.html"></object>',
+    ],
+)
+def test_markdown_reference_definitions_and_html_links_cannot_escape_skill_root(
+    tmp_path: Path, reference: str
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "SKILL.md").write_text(
+        (built / "SKILL.md").read_text(encoding="utf-8") + f"\n{reference}\n",
+        encoding="utf-8",
+    )
+
+    assert any("escapes skill root" in error for error in validate_skill_root(built))
+
+
+def test_external_mailto_fragment_and_internal_markdown_html_links_are_allowed(
+    tmp_path: Path,
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    recipient = "owner" + "@example.test"
+    (built / "SKILL.md").write_text(
+        (built / "SKILL.md").read_text(encoding="utf-8")
+        + "\n[external]: https://example.test/reference \"Optional title\"\n"
+        + f"[mail]: mailto:{recipient}\n"
+        + "[fragment]: #internal-heading\n"
+        + "[internal]: <references/local.md>\n"
+        + '<a href="https://example.test/reference">external</a>\n'
+        + '<img src="references/local.md" alt="internal">\n',
+        encoding="utf-8",
+    )
+
+    assert validate_skill_root(built) == []
+
+
+@pytest.mark.parametrize(
     ("filename", "contents", "expected_error"),
     [
         ("LICENSE", None, "missing LICENSE"),

@@ -1,13 +1,36 @@
 from __future__ import annotations
 
+from html.parser import HTMLParser
 from pathlib import Path
 import re
+from urllib.parse import unquote, urlsplit
 
 import yaml
 
 from .frontmatter import FrontmatterError, parse_skill_frontmatter
 
-LINK_RE = re.compile(r"\[[^]]+\]\(([^)]+)\)")
+INLINE_LINK_RE = re.compile(
+    r"\[[^\]\n]+\]\(\s*(?:<(?P<angle>[^>\n]+)>|(?P<bare>[^()\s]+))"
+    r"(?:\s+(?:\"[^\"\n]*\"|'[^'\n]*'|\([^()\n]*\)))?\s*\)",
+)
+REFERENCE_DEFINITION_RE = re.compile(
+    r"^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*(?:<(?P<angle>[^>\n]*)>|(?P<bare>\S+))",
+    re.MULTILINE,
+)
+HTML_LINK_ATTRIBUTES = frozenset(
+    {
+        "action",
+        "background",
+        "cite",
+        "data",
+        "formaction",
+        "href",
+        "poster",
+        "src",
+        "srcset",
+        "xlink:href",
+    }
+)
 REQUIRED_OPENAI_INTERFACE_FIELDS = (
     "display_name",
     "short_description",
@@ -18,6 +41,68 @@ REQUIRED_LEGAL_MARKERS = {
     "LICENSE": ("Apache License", "Version 2.0"),
     "NOTICE": ("Personal AI Workspace", "Apache License, Version 2.0"),
 }
+
+
+class _HTMLLinkParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.targets: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._collect(attrs)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._collect(attrs)
+
+    def _collect(self, attrs: list[tuple[str, str | None]]) -> None:
+        for attribute, value in attrs:
+            if value is None or attribute.lower() not in HTML_LINK_ATTRIBUTES:
+                continue
+            if attribute.lower() == "srcset":
+                self.targets.extend(
+                    candidate.strip().split(maxsplit=1)[0]
+                    for candidate in value.split(",")
+                    if candidate.strip()
+                )
+            else:
+                self.targets.append(value)
+
+
+def _markdown_link_targets(text: str) -> list[str]:
+    targets: list[str] = []
+    for expression in (INLINE_LINK_RE, REFERENCE_DEFINITION_RE):
+        for match in expression.finditer(text):
+            targets.append(match.group("angle") or match.group("bare"))
+    return targets
+
+
+def _html_link_targets(text: str) -> list[str]:
+    parser = _HTMLLinkParser()
+    parser.feed(text)
+    parser.close()
+    return parser.targets
+
+
+def _validate_link_target(root: Path, markdown: Path, target: str) -> str | None:
+    target = target.strip()
+    if not target or target.startswith("#"):
+        return None
+
+    parsed = urlsplit(target)
+    if parsed.scheme or parsed.netloc:
+        return None
+    clean = unquote(parsed.path)
+    if not clean:
+        return None
+
+    resolved = (markdown.parent / clean).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        return f"{markdown.relative_to(root)} link escapes skill root: {target}"
+    if not resolved.exists():
+        return f"{markdown.relative_to(root)} has broken link: {target}"
+    return None
 
 
 def _validate_openai_metadata(path: Path) -> list[str]:
@@ -100,18 +185,10 @@ def validate_skill_root(root: Path) -> list[str]:
 
     for markdown in sorted(root.rglob("*.md")):
         text = markdown.read_text(encoding="utf-8")
-        for target in LINK_RE.findall(text):
-            if "://" in target or target.startswith("mailto:") or target.startswith("#"):
-                continue
-            clean = target.split("#", 1)[0]
-            resolved = (markdown.parent / clean).resolve()
-            try:
-                resolved.relative_to(root)
-            except ValueError:
-                errors.append(f"{markdown.relative_to(root)} link escapes skill root: {target}")
-                continue
-            if clean and not resolved.exists():
-                errors.append(f"{markdown.relative_to(root)} has broken link: {target}")
+        for target in _markdown_link_targets(text) + _html_link_targets(text):
+            error = _validate_link_target(root, markdown, target)
+            if error:
+                errors.append(error)
     return errors
 
 

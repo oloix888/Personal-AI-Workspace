@@ -209,6 +209,110 @@ def test_scanner_scans_zip_archive_comment_and_trailing_bytes(tmp_path: Path) ->
     }
 
 
+def _zip_extra_field(field_id: int, value: bytes) -> bytes:
+    return field_id.to_bytes(2, "little") + len(value).to_bytes(2, "little") + value
+
+
+def test_scanner_scans_zip_member_comment_and_extra_metadata_at_every_nesting_level(
+    tmp_path: Path,
+) -> None:
+    synthetic_private_email = b"synthetic.private" + b"@example.test"
+    inner_bytes = io.BytesIO()
+    inner_member = zipfile.ZipInfo("safe.md")
+    inner_member.comment = b"inner-comment: " + synthetic_private_email
+    inner_member.extra = _zip_extra_field(0xCAFE, b"inner-extra: " + synthetic_private_email)
+    with zipfile.ZipFile(inner_bytes, "w") as archive:
+        archive.writestr(inner_member, b"safe")
+
+    outer_member = zipfile.ZipInfo("nested/inner.zip")
+    outer_member.comment = b"outer-comment: " + synthetic_private_email
+    outer_member.extra = _zip_extra_field(0xBEEF, b"outer-extra: " + synthetic_private_email)
+    with zipfile.ZipFile(tmp_path / "outer.zip", "w") as archive:
+        archive.writestr(outer_member, inner_bytes.getvalue())
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    assert {(finding.path, finding.rule) for finding in findings} == {
+        ("outer.zip!nested/inner.zip!<member-comment>", "non_allowlisted_email"),
+        ("outer.zip!nested/inner.zip!<member-extra:0xbeef>", "non_allowlisted_email"),
+        (
+            "outer.zip!nested/inner.zip!safe.md!<member-comment>",
+            "non_allowlisted_email",
+        ),
+        (
+            "outer.zip!nested/inner.zip!safe.md!<member-extra:0xcafe>",
+            "non_allowlisted_email",
+        ),
+    }
+
+
+@pytest.mark.parametrize(
+    ("metadata_kind", "metadata", "expected_location"),
+    [
+        ("comment", b"unsafe\x00metadata", "metadata.zip!safe.md!<member-comment>"),
+        (
+            "extra",
+            _zip_extra_field(0xCAFE, b"unsafe\xffmetadata"),
+            "metadata.zip!safe.md!<member-extra:0xcafe>",
+        ),
+    ],
+)
+def test_scanner_fails_closed_for_unclassified_zip_member_metadata(
+    tmp_path: Path, metadata_kind: str, metadata: bytes, expected_location: str
+) -> None:
+    member = zipfile.ZipInfo("safe.md")
+    setattr(member, metadata_kind, metadata)
+    with zipfile.ZipFile(tmp_path / "metadata.zip", "w") as archive:
+        archive.writestr(member, b"safe")
+
+    with pytest.raises(PublicSafetyError, match=f"unclassified ZIP metadata: {expected_location}"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+@pytest.mark.parametrize("metadata_kind", ["comment", "extra"])
+def test_scanner_fails_closed_for_oversized_zip_member_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, metadata_kind: str
+) -> None:
+    member = zipfile.ZipInfo("safe.md")
+    metadata = b"xx"
+    setattr(
+        member,
+        metadata_kind,
+        metadata if metadata_kind == "comment" else _zip_extra_field(0xCAFE, metadata),
+    )
+    with zipfile.ZipFile(tmp_path / "metadata.zip", "w") as archive:
+        archive.writestr(member, b"safe")
+    monkeypatch.setattr(scanner, "MAX_ZIP_MEMBER_METADATA_SIZE", 1)
+
+    expected_location = (
+        "metadata.zip!safe.md!<member-comment>"
+        if metadata_kind == "comment"
+        else "metadata.zip!safe.md!<member-extra:0xcafe>"
+    )
+    with pytest.raises(
+        PublicSafetyError,
+        match=f"ZIP metadata exceeds size limit: {expected_location}",
+    ):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+def test_scanner_fails_closed_for_malformed_zip_member_extra_metadata(tmp_path: Path) -> None:
+    member = zipfile.ZipInfo("safe.md")
+    member.extra = b"\xfe\xca\x01\x00"
+
+    with pytest.raises(
+        PublicSafetyError,
+        match="malformed ZIP metadata: metadata.zip!safe.md!<member-extra:0xcafe>",
+    ):
+        list(scanner._iter_zip_member_extra_metadata(member, "metadata.zip!safe.md"))
+
+    with zipfile.ZipFile(tmp_path / "metadata.zip", "w") as archive:
+        archive.writestr(member, b"safe")
+
+    with pytest.raises(PublicSafetyError, match="invalid ZIP archive: metadata.zip"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
 def test_scanner_fails_closed_for_zip_trailing_bytes_beyond_the_zip_comment_window(
     tmp_path: Path,
 ) -> None:
