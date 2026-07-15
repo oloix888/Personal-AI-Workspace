@@ -36,15 +36,23 @@ HTML_LINK_ATTRIBUTES = frozenset(
     }
 )
 STRUCTURED_CONFIG_SUFFIXES = frozenset({".json", ".toml", ".yaml", ".yml"})
-FILE_REFERENCE_KEYS = frozenset(
+FILE_REFERENCE_KEY_TOKENS = frozenset(
     {
         "asset",
+        "directory",
+        "dir",
         "file",
         "filename",
+        "include",
+        "import",
         "manifest",
         "path",
+        "reference",
+        "ref",
         "schema",
         "script",
+        "source",
+        "src",
         "template",
     }
 )
@@ -61,6 +69,11 @@ REQUIRED_LEGAL_MARKERS = {
     "NOTICE": ("Personal AI Workspace", "Apache License, Version 2.0"),
 }
 WINDOWS_DRIVE_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
+PATH_TRAVERSAL_COMPONENT_RE = re.compile(r"(?:^|[\\/])\.\.(?:[\\/]|$)")
+META_REFRESH_URL_RE = re.compile(
+    r"(?:^|;)\s*url\s*=\s*(?:'(?P<single>[^']*)'|\"(?P<double>[^\"]*)\"|(?P<bare>[^;\s]*))",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -76,14 +89,15 @@ class _HTMLLinkParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.targets: list[str] = []
+        self.meta_refresh_targets: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        self._collect(attrs)
+        self._collect(tag, attrs)
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        self._collect(attrs)
+        self._collect(tag, attrs)
 
-    def _collect(self, attrs: list[tuple[str, str | None]]) -> None:
+    def _collect(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         for attribute, value in attrs:
             if value is None or attribute.lower() not in HTML_LINK_ATTRIBUTES:
                 continue
@@ -95,6 +109,19 @@ class _HTMLLinkParser(HTMLParser):
                 )
             else:
                 self.targets.append(value)
+        if tag.lower() != "meta":
+            return
+        normalized = {key.lower(): value for key, value in attrs}
+        if (normalized.get("http-equiv") or "").lower() != "refresh":
+            return
+        content = normalized.get("content")
+        if content is None:
+            return
+        match = META_REFRESH_URL_RE.search(content)
+        if match:
+            self.meta_refresh_targets.append(
+                match.group("single") or match.group("double") or match.group("bare") or ""
+            )
 
 
 def _markdown_link_targets(text: str) -> list[str]:
@@ -112,10 +139,17 @@ def _html_link_targets(text: str) -> list[str]:
     return parser.targets
 
 
+def _html_meta_refresh_targets(text: str) -> list[str]:
+    parser = _HTMLLinkParser()
+    parser.feed(text)
+    parser.close()
+    return parser.meta_refresh_targets
+
+
 def _is_local_or_host_filesystem_target(target: str, parsed_target: object) -> bool:
     return (
         getattr(parsed_target, "scheme", "").lower() == "file"
-        or target.startswith(("//", "\\\\"))
+        or target.startswith(("/", "\\\\"))
         or WINDOWS_DRIVE_PATH_RE.match(target) is not None
     )
 
@@ -156,24 +190,52 @@ def _validate_link_target(root: Path, source: Path, target: str) -> str | None:
 def _is_file_reference_key(key: object) -> bool:
     if not isinstance(key, str):
         return False
-    normalized = key.lower().replace("-", "_")
-    return normalized in FILE_REFERENCE_KEYS or normalized.endswith(
-        ("_file", "_filename", "_path")
+    normalized = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key).lower()
+    tokens = [token for token in re.split(r"[^a-z0-9]+", normalized) if token]
+    return any(token.rstrip("s") in FILE_REFERENCE_KEY_TOKENS for token in tokens)
+
+
+def _looks_like_unsafe_file_reference(target: str) -> bool:
+    """Find boundary-escaping path forms even under unknown config keys.
+
+    Structured configuration frequently permits arbitrary extension keys.  Those keys
+    must not provide a loophole for a relative traversal, local absolute path, or
+    ``file:`` URL merely because their names are not known to this validator.
+    """
+
+    target = target.strip()
+    if not target:
+        return False
+    decoded_target = unquote(target)
+    parsed = urlsplit(decoded_target)
+    return (
+        _is_local_or_host_filesystem_target(decoded_target, parsed)
+        or PATH_TRAVERSAL_COMPONENT_RE.search(unquote(parsed.path)) is not None
     )
 
 
 def _structured_file_reference_targets(payload: object) -> list[str]:
     targets: list[str] = []
-    pending = [payload]
+    pending: list[tuple[object, bool]] = [(payload, False)]
     while pending:
-        current = pending.pop()
+        current, inherited_file_reference = pending.pop()
         if isinstance(current, dict):
             for key, value in current.items():
-                if _is_file_reference_key(key) and isinstance(value, str):
+                is_file_reference = inherited_file_reference or _is_file_reference_key(key)
+                if isinstance(value, str) and (
+                    is_file_reference or _looks_like_unsafe_file_reference(value)
+                ):
                     targets.append(value)
-                pending.append(value)
+                elif isinstance(value, list):
+                    pending.append((value, is_file_reference))
+                elif isinstance(value, dict):
+                    # A field called ``source`` in a JSON Schema, for example, is a
+                    # property name rather than a file-reference container.  Nested
+                    # mappings therefore establish their own key context; only lists
+                    # retain the parent field's file-reference meaning.
+                    pending.append((value, False))
         elif isinstance(current, list):
-            pending.extend(current)
+            pending.extend((value, inherited_file_reference) for value in current)
     return targets
 
 
@@ -210,7 +272,7 @@ def _is_dunder_file(node: ast.AST) -> bool:
 
 
 def _path_constructor_argument(node: ast.Call) -> ast.AST | None:
-    if isinstance(node.func, ast.Name) and node.func.id == "Path" and node.args:
+    if _dotted_name(node.func) in {"Path", "pathlib.Path"} and node.args:
         return node.args[0]
     return None
 
@@ -257,32 +319,72 @@ def _append_python_literal(
     return _StaticPythonPath(parts)
 
 
-def _python_path_expression(
-    node: ast.AST, source: Path, root: Path
-) -> _StaticPythonPath | None:
-    """Recognize only direct ``Path``/``__file__`` expressions; never execute code.
+def _dotted_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = _dotted_name(node.value)
+        return f"{parent}.{node.attr}" if parent else None
+    return None
 
-    This intentionally does not resolve variables, imports, custom helpers, or dynamic
-    values. It provides a conservative package gate for the common direct runtime path
-    patterns used by distributed scripts: ``Path(__file__)`` with ``parent``/``parents``,
-    ``/`` joins, ``joinpath()``, and direct literal ``Path``/``open`` arguments.
+
+def _python_parent(path: _StaticPythonPath, target: str) -> _StaticPythonPath:
+    if path.error:
+        return path
+    if not path.parts:
+        return _StaticPythonPath((), "escapes skill root", target)
+    return _StaticPythonPath(path.parts[:-1])
+
+
+def _python_path_expression(
+    node: ast.AST,
+    source: Path,
+    root: Path,
+    bindings: dict[str, _StaticPythonPath | None],
+) -> _StaticPythonPath | None:
+    """Statically model supported runtime path expressions without executing code.
+
+    The model intentionally covers the documented ``pathlib`` and ``os.path`` forms.
+    It follows simple variable bindings so that a path cannot escape through an
+    intermediate variable.  A caller that performs file I/O must reject an expression
+    this model cannot resolve, rather than treating it as safe.
     """
 
     literal = _string_literal(node)
     if literal is not None:
         return _path_from_literal(literal)
+    if _is_dunder_file(node):
+        return _StaticPythonPath(source.relative_to(root).parts)
+    if isinstance(node, ast.Name):
+        return bindings.get(node.id)
 
     if isinstance(node, ast.Call):
+        dotted_function = _dotted_name(node.func)
+        if dotted_function == "os.path.dirname" and len(node.args) == 1:
+            base = _python_path_expression(node.args[0], source, root, bindings)
+            return _python_parent(base, "dirname") if base is not None else None
+        if dotted_function == "os.path.join" and node.args:
+            base = _python_path_expression(node.args[0], source, root, bindings)
+            if base is None:
+                return None
+            for argument in node.args[1:]:
+                literal = _string_literal(argument)
+                if literal is None:
+                    return None
+                base = _append_python_literal(base, literal)
+            return base
+        if dotted_function in {
+            "os.path.abspath",
+            "os.path.normpath",
+            "os.path.realpath",
+        } and len(node.args) == 1:
+            return _python_path_expression(node.args[0], source, root, bindings)
+
         constructor_argument = _path_constructor_argument(node)
         if constructor_argument is not None:
-            if _is_dunder_file(constructor_argument):
-                return _StaticPythonPath(source.relative_to(root).parts)
-            literal = _string_literal(constructor_argument)
-            if literal is not None:
-                return _path_from_literal(literal)
-            return None
+            return _python_path_expression(constructor_argument, source, root, bindings)
         if isinstance(node.func, ast.Attribute):
-            base = _python_path_expression(node.func.value, source, root)
+            base = _python_path_expression(node.func.value, source, root, bindings)
             if base is None:
                 return None
             if node.func.attr in {"absolute", "resolve"}:
@@ -291,18 +393,14 @@ def _python_path_expression(
                 for argument in node.args:
                     literal = _string_literal(argument)
                     if literal is None:
-                        return base
+                        return None
                     base = _append_python_literal(base, literal)
                 return base
         return None
 
     if isinstance(node, ast.Attribute) and node.attr == "parent":
-        base = _python_path_expression(node.value, source, root)
-        if base is None or base.error:
-            return base
-        if not base.parts:
-            return _StaticPythonPath((), "escapes skill root", "parent")
-        return _StaticPythonPath(base.parts[:-1])
+        base = _python_path_expression(node.value, source, root, bindings)
+        return _python_parent(base, "parent") if base is not None else None
 
     if (
         isinstance(node, ast.Subscript)
@@ -312,7 +410,7 @@ def _python_path_expression(
         and isinstance(node.slice.value, int)
         and node.slice.value >= 0
     ):
-        base = _python_path_expression(node.value.value, source, root)
+        base = _python_path_expression(node.value.value, source, root, bindings)
         if base is None or base.error:
             return base
         levels = node.slice.value + 1
@@ -323,10 +421,10 @@ def _python_path_expression(
         return _StaticPythonPath(base.parts[:-levels])
 
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
-        base = _python_path_expression(node.left, source, root)
+        base = _python_path_expression(node.left, source, root, bindings)
         literal = _string_literal(node.right)
         if base is None or literal is None:
-            return base
+            return None
         return _append_python_literal(base, literal)
     return None
 
@@ -336,20 +434,152 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
         self.root = root
         self.source = source
         self.errors: list[str] = []
-        self._reported: set[tuple[int, int, str, str | None]] = set()
+        self.bindings: dict[str, _StaticPythonPath | None] = {}
+        self._reported: set[tuple[str, str | None]] = set()
 
-    def _check_expression(self, node: ast.AST) -> None:
-        path = _python_path_expression(node, self.source, self.root)
-        if path is None or path.error is None:
-            return
-        key = (node.lineno, node.col_offset, path.error, path.target)
+    def _report(self, error: str, target: str | None = None) -> None:
+        key = (error, target)
         if key in self._reported:
             return
         self._reported.add(key)
-        target = f": {path.target}" if path.target else ""
+        target_text = f": {target}" if target else ""
         self.errors.append(
-            f"{self.source.relative_to(self.root)} runtime file reference {path.error}{target}"
+            f"{self.source.relative_to(self.root)} runtime file reference {error}{target_text}"
         )
+
+    def _check_expression(self, node: ast.AST, *, require_resolved: bool = False) -> None:
+        path = _python_path_expression(node, self.source, self.root, self.bindings)
+        if path is None:
+            if require_resolved:
+                self._report("cannot be statically resolved")
+            return
+        if path.error:
+            self._report(path.error, path.target)
+
+    def _bind(self, target: ast.AST, value: ast.AST) -> None:
+        if isinstance(target, ast.Name):
+            self.bindings[target.id] = _python_path_expression(
+                value, self.source, self.root, self.bindings
+            )
+
+    def _visit_statements(
+        self,
+        statements: list[ast.stmt],
+        initial_bindings: dict[str, _StaticPythonPath | None],
+    ) -> dict[str, _StaticPythonPath | None]:
+        outer_bindings = self.bindings
+        self.bindings = initial_bindings.copy()
+        for statement in statements:
+            self.visit(statement)
+        result = self.bindings
+        self.bindings = outer_bindings
+        return result
+
+    @staticmethod
+    def _merge_bindings(
+        *branches: dict[str, _StaticPythonPath | None],
+    ) -> dict[str, _StaticPythonPath | None]:
+        names = set().union(*(branch.keys() for branch in branches))
+        merged: dict[str, _StaticPythonPath | None] = {}
+        for name in names:
+            values = [branch.get(name) for branch in branches]
+            merged[name] = values[0] if all(value == values[0] for value in values) else None
+        return merged
+
+    def _is_file_open_call(self, node: ast.Call) -> bool:
+        name = _dotted_name(node.func)
+        return name in {"open", "builtins.open", "io.open", "os.open"}
+
+    def _is_path_file_io_call(self, node: ast.Call) -> bool:
+        return isinstance(node.func, ast.Attribute) and node.func.attr in {
+            "exists",
+            "glob",
+            "is_dir",
+            "is_file",
+            "iterdir",
+            "mkdir",
+            "open",
+            "read_bytes",
+            "read_text",
+            "rename",
+            "replace",
+            "rglob",
+            "stat",
+            "touch",
+            "unlink",
+            "write_bytes",
+            "write_text",
+        }
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        self.visit(node.value)
+        for target in node.targets:
+            self._bind(target, node.value)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is not None:
+            self.visit(node.value)
+            self._bind(node.target, node.value)
+
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        self.visit(node.value)
+        if isinstance(node.target, ast.Name):
+            self.bindings[node.target.id] = None
+
+    def visit_If(self, node: ast.If) -> None:
+        self.visit(node.test)
+        initial_bindings = self.bindings.copy()
+        body_bindings = self._visit_statements(node.body, initial_bindings)
+        else_bindings = self._visit_statements(node.orelse, initial_bindings)
+        self.bindings = self._merge_bindings(body_bindings, else_bindings)
+
+    def visit_For(self, node: ast.For) -> None:
+        self.visit(node.iter)
+        initial_bindings = self.bindings.copy()
+        body_bindings = self._visit_statements(node.body, initial_bindings)
+        self.bindings = self._merge_bindings(initial_bindings, body_bindings)
+        if node.orelse:
+            self.bindings = self._visit_statements(node.orelse, self.bindings)
+
+    def visit_While(self, node: ast.While) -> None:
+        self.visit(node.test)
+        initial_bindings = self.bindings.copy()
+        body_bindings = self._visit_statements(node.body, initial_bindings)
+        self.bindings = self._merge_bindings(initial_bindings, body_bindings)
+        if node.orelse:
+            self.bindings = self._visit_statements(node.orelse, self.bindings)
+
+    def visit_Try(self, node: ast.Try) -> None:
+        initial_bindings = self.bindings.copy()
+        normal_bindings = self._visit_statements(node.body, initial_bindings)
+        if node.orelse:
+            normal_bindings = self._visit_statements(node.orelse, normal_bindings)
+        handler_bindings = [
+            self._visit_statements(handler.body, initial_bindings)
+            for handler in node.handlers
+        ]
+        self.bindings = self._merge_bindings(normal_bindings, *handler_bindings)
+        if node.finalbody:
+            self.bindings = self._visit_statements(node.finalbody, self.bindings)
+
+    def visit_Match(self, node: ast.Match) -> None:
+        self.visit(node.subject)
+        initial_bindings = self.bindings.copy()
+        branches = [
+            self._visit_statements(case.body, initial_bindings) for case in node.cases
+        ]
+        self.bindings = self._merge_bindings(initial_bindings, *branches)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_statements(node.body, self.bindings)
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+
+    if hasattr(ast, "TryStar"):
+        visit_TryStar = visit_Try
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self._visit_statements(node.body, self.bindings)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         self._check_expression(node)
@@ -365,15 +595,10 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         self._check_expression(node)
-        if isinstance(node.func, ast.Name) and node.func.id == "open" and node.args:
-            self._check_expression(node.args[0])
-        if isinstance(node.func, ast.Attribute) and node.func.attr in {
-            "read_bytes",
-            "read_text",
-            "write_bytes",
-            "write_text",
-        }:
-            self._check_expression(node.func.value)
+        if self._is_file_open_call(node) and node.args:
+            self._check_expression(node.args[0], require_resolved=True)
+        if self._is_path_file_io_call(node):
+            self._check_expression(node.func.value, require_resolved=True)
         self.generic_visit(node)
 
 
@@ -481,13 +706,22 @@ def validate_skill_root(root: Path) -> list[str]:
             error = _validate_link_target(root, markdown, target)
             if error:
                 errors.append(error)
+        for target in _html_meta_refresh_targets(text):
+            error = _validate_relative_target(root, markdown, target, "meta refresh")
+            if error:
+                errors.append(error)
     for html in sorted(
         path
         for suffix in ("*.html", "*.htm", "*.xhtml")
         for path in root.rglob(suffix)
     ):
-        for target in _html_link_targets(html.read_text(encoding="utf-8")):
+        text = html.read_text(encoding="utf-8")
+        for target in _html_link_targets(text):
             error = _validate_link_target(root, html, target)
+            if error:
+                errors.append(error)
+        for target in _html_meta_refresh_targets(text):
+            error = _validate_relative_target(root, html, target, "meta refresh")
             if error:
                 errors.append(error)
     for config in sorted(

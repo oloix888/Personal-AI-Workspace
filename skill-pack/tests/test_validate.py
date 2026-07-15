@@ -133,6 +133,75 @@ def test_in_root_html_and_structured_config_references_are_allowed(tmp_path: Pat
     assert validate_skill_root(built) == []
 
 
+@pytest.mark.parametrize(
+    ("contents", "expected_error"),
+    [
+        (
+            "include: ../../_shared/contract/governance.md\n",
+            "runtime.yaml file reference escapes skill root",
+        ),
+        (
+            "unrelated_setting: file:///tmp/private-config.yaml\n",
+            "runtime.yaml local or host filesystem file reference is not allowed",
+        ),
+        (
+            "unrelated_setting: ../../_shared/contract/governance.md\n",
+            "runtime.yaml file reference escapes skill root",
+        ),
+    ],
+)
+def test_all_structured_config_path_forms_cannot_escape_skill_root(
+    tmp_path: Path, contents: str, expected_error: str
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "agents" / "runtime.yaml").write_text(contents, encoding="utf-8")
+
+    assert any(expected_error in error for error in validate_skill_root(built))
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        '<meta http-equiv="refresh" content="0; url=file:///tmp/private.html">\n',
+        '<meta http-equiv="refresh" content="0; URL=../../outside.html">\n',
+    ],
+)
+def test_html_meta_refresh_cannot_escape_skill_root(
+    tmp_path: Path, contents: str
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "references" / "redirect.html").write_text(contents, encoding="utf-8")
+
+    assert any(
+        "references/redirect.html" in error and "meta refresh" in error
+        for error in validate_skill_root(built)
+    )
+
+
+def test_in_root_html_meta_refresh_is_allowed(tmp_path: Path) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "references" / "redirect.html").write_text(
+        '<meta http-equiv="refresh" content="0; url=local.md">\n', encoding="utf-8"
+    )
+
+    assert validate_skill_root(built) == []
+
+
 def test_runtime_python_path_escape_is_rejected_before_packaging(tmp_path: Path) -> None:
     built = build_skill(
         FIXTURES / "minimal-skill",
@@ -190,6 +259,98 @@ def test_in_root_runtime_python_path_reference_is_allowed(tmp_path: Path) -> Non
         "from pathlib import Path\n"
         'LOCAL = Path(__file__).resolve().parents[1] / "references" / "local.md"\n'
         "contents = LOCAL.read_text(encoding=\"utf-8\")\n",
+        encoding="utf-8",
+    )
+
+    assert validate_skill_root(built) == []
+
+
+def test_os_path_dirname_join_open_escape_is_rejected(tmp_path: Path) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "scripts").mkdir()
+    (built / "scripts" / "escape.py").write_text(
+        "import os\n"
+        "script_dir = os.path.dirname(__file__)\n"
+        'secret = os.path.join(script_dir, "..", "..", "private.txt")\n'
+        'with open(secret, encoding="utf-8") as handle:\n'
+        "    handle.read()\n",
+        encoding="utf-8",
+    )
+
+    assert any(
+        "scripts/escape.py runtime file reference escapes skill root" in error
+        for error in validate_skill_root(built)
+    )
+
+
+def test_dynamic_runtime_python_file_io_is_rejected(tmp_path: Path) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "scripts").mkdir()
+    (built / "scripts" / "dynamic.py").write_text(
+        "import os\n"
+        'target = os.environ["PRIVATE_RESOURCE"]\n'
+        'with open(target, encoding="utf-8") as handle:\n'
+        "    handle.read()\n",
+        encoding="utf-8",
+    )
+
+    assert any(
+        "scripts/dynamic.py runtime file reference cannot be statically resolved" in error
+        for error in validate_skill_root(built)
+    )
+
+
+def test_conditionally_dynamic_runtime_python_file_io_is_rejected(tmp_path: Path) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "scripts").mkdir()
+    (built / "scripts" / "conditional.py").write_text(
+        "import os\n"
+        'if os.environ.get("USE_PRIVATE_RESOURCE"):\n'
+        '    target = os.environ["PRIVATE_RESOURCE"]\n'
+        "else:\n"
+        "    script_dir = os.path.dirname(__file__)\n"
+        '    target = os.path.join(script_dir, "..", "references", "local.md")\n'
+        'with open(target, encoding="utf-8") as handle:\n'
+        "    handle.read()\n",
+        encoding="utf-8",
+    )
+
+    assert any(
+        "scripts/conditional.py runtime file reference cannot be statically resolved"
+        in error
+        for error in validate_skill_root(built)
+    )
+
+
+def test_in_root_os_path_dirname_join_open_reference_is_allowed(tmp_path: Path) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    (built / "scripts").mkdir()
+    (built / "scripts" / "read_local.py").write_text(
+        "import os\n"
+        "script_dir = os.path.dirname(__file__)\n"
+        'local = os.path.join(script_dir, "..", "references", "local.md")\n'
+        'with open(local, encoding="utf-8") as handle:\n'
+        "    handle.read()\n",
         encoding="utf-8",
     )
 

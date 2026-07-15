@@ -101,6 +101,68 @@ def test_packaging_rejects_html_path_escape_before_creating_an_archive(
 
 
 @pytest.mark.parametrize(
+    ("relative_path", "contents", "expected_error"),
+    [
+        (
+            "agents/runtime.yaml",
+            "include: ../../_shared/contract/governance.md\n",
+            "file reference escapes skill root",
+        ),
+        (
+            "agents/runtime.yaml",
+            "unrelated_setting: file:///tmp/private-config.yaml\n",
+            "local or host filesystem file reference",
+        ),
+        (
+            "references/redirect.html",
+            '<meta http-equiv="refresh" content="0; url=file:///tmp/private.html">\n',
+            "local or host filesystem meta refresh",
+        ),
+        (
+            "references/redirect.html",
+            '<meta http-equiv="refresh" content="0; url=../../outside.html">\n',
+            "meta refresh escapes skill root",
+        ),
+        (
+            "scripts/escape.py",
+            "import os\n"
+            "script_dir = os.path.dirname(__file__)\n"
+            'secret = os.path.join(script_dir, "..", "..", "private.txt")\n'
+            'with open(secret, encoding="utf-8") as handle:\n'
+            "    handle.read()\n",
+            "runtime file reference escapes skill root",
+        ),
+        (
+            "scripts/dynamic.py",
+            "import os\n"
+            'target = os.environ["PRIVATE_RESOURCE"]\n'
+            'with open(target, encoding="utf-8") as handle:\n'
+            "    handle.read()\n",
+            "runtime file reference cannot be statically resolved",
+        ),
+    ],
+)
+def test_packaging_rejects_all_runtime_boundary_bypasses_before_creating_an_archive(
+    tmp_path: Path, relative_path: str, contents: str, expected_error: str
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path / "build",
+        "0.1.0-beta.1",
+    )
+    target = built / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(contents, encoding="utf-8")
+    destination = tmp_path / "minimal-skill.zip"
+
+    with pytest.raises(ValueError, match=expected_error):
+        create_deterministic_zip(built, destination)
+
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize(
     ("filename", "contents"),
     [
         ("LICENSE", "Apache License\nVersion 2.0\n"),
