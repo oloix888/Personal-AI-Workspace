@@ -1,0 +1,26 @@
+name: Installation help
+description: Get help configuring Personal AI Workspace
+title: "[Install]: "
+labels: [question]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Creator version
+      placeholder: v1.5.1
+    validations:
+      required: true
+  - type: input
+    id: stage
+    attributes:
+      label: Stage where the flow stopped
+    validations:
+      required: true
+  - type: textarea
+    id: connectors
+    attributes:
+      label: Available connectors and environment
+  - type: textarea
+    id: error
+    attributes:
+      label: Exact error, with secrets removed

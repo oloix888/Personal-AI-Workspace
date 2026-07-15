@@ -1,0 +1,188 @@
+--- Personal-AI-Workspace-Creator-v1.2.md
++++ Personal-AI-Workspace-Creator-v1.3.md
+@@ -1,6 +1,6 @@
+ # Personal AI Workspace — uniwersalny kreator wdrożenia dla ChatGPT
+ 
+-**Wersja dokumentu:** 1.2  
++**Wersja dokumentu:** 1.3  
+ **Przeznaczenie:** samodzielne przeprowadzenie właściciela konta przez stworzenie osobistego systemu wiedzy, relacji, decyzji, zadań, komunikacji i automatyzacji opartego na ChatGPT, Notion oraz opcjonalnych integracjach.  
+ **Sposób użycia:** właściciel konta załącza ten plik w nowej rozmowie z ChatGPT i pisze:
+ 
+@@ -235,7 +235,7 @@
+ Po zakończeniu wdrożenia użytkownik powinien posiadać:
+ 
+ 1. **O systemie** — atrakcyjną, zrozumiałą stronę wyjaśniającą, czym jest Personal AI Workspace, co robi i jaki ma cel.
+-2. **Workspace Constitution** — kanoniczny dokument zasad.
++2. **Workspace Constitution 2.0** — krótki kanoniczny indeks i zestaw małych, wersjonowanych modułów zasad.
+ 3. **Start Here** — krótki punkt wejścia.
+ 4. **Twórcy systemu** — trwałą atrybucję pierwotnych twórców koncepcji i architektury.
+ 5. **Knowledge** — trwałą wiedzę i knowledge graph.
+@@ -1775,13 +1775,25 @@
+ 
+ ## Etap 9 z 12 — Workspace Constitution
+ 
+-Utwórz pełny dokument:
+-
+-```text
+-Workspace Constitution — pełna instrukcja [ASSISTANT_NAME] Workspace
+-```
+-
+-Musi zawierać:
++Utwórz modularny zestaw:
++
++```text
++Workspace Constitution — modularna instrukcja [ASSISTANT_NAME] Workspace
++├── 00 — Protokół odczytu i rdzeń zasad
++├── 01 — Tożsamość, bezpieczeństwo, szczerość i inicjatywa
++├── 02 — Knowledge, źródła i retencja
++├── 03 — Relations i model operacyjny użytkownika
++├── 04 — Decision Engine
++├── 05 — Zadania i wykonanie
++├── 06 — Gmail i komunikacja e-mail
++├── 07 — Calendar i Contacts
++├── 08 — Drive i pliki
++├── 09 — Aktualizacja Notion, audyt i źródła
++├── 10 — Automatyzacje i Daily Context Sync
++└── 11 — Zmiana Constitution, wersje i changelog
++```
++
++**Główna strona jest krótkim indeksem, nie pełnym megadokumentem.** Łącznie indeks i moduły muszą zawierać:
+ 
+ 1. cel systemu;
+ 2. oczekiwane konta;
+@@ -1808,6 +1820,68 @@
+ 23. zasady zmiany konstytucji;
+ 24. changelog.
+ 
++
++## 9.0. Architektura modularna i limit odczytu
++
++Główny link Constitution musi pozostać stabilną kotwicą personalizacji, ale jego treść powinna mieścić się w jednym pełnym odczycie konektora.
++
++Główna strona zawiera tylko:
++
++- status i wersję;
++- oczekiwane konta;
++- krótki rdzeń zasad;
++- obowiązkowy protokół odczytu;
++- rejestr modułów z linkami;
++- mapę głównych stron Workspace;
++- krótki changelog.
++
++### Obowiązkowy protokół
++
++Przed istotną pracą ChatGPT ma odczytać:
++
++1. główny indeks Constitution;
++2. Start Here;
++3. moduł `00`;
++4. wszystkie moduły właściwe dla zadania.
++
++Zadanie przekrojowe wymaga kilku modułów. Nie wolno działać na podstawie samego tytułu, tabeli indeksowej ani pamięci poprzedniej rozmowy.
++
++### Reguła obcięcia
++
++Jeżeli konektor oznaczy odpowiedź jako `truncated`, urwie końcówkę albo nie pokaże pełnej sekcji:
++
++- dokument nie jest uznany za przeczytany;
++- ChatGPT ma powiedzieć to wprost;
++- nie wolno udawać znajomości brakującej treści;
++- moduł należy podzielić na mniejsze podmoduły;
++- indeks, Start Here, Workspace Index i changelog muszą zostać zaktualizowane.
++
++Docelowo każdy moduł ma nie więcej niż około **7000 znaków treści operacyjnej**. Jeżeli faktyczny konektor obcina wcześniej, obowiązuje niższy zaobserwowany limit.
++
++### Routing modułów
++
++| Praca | Moduły |
++|---|---|
++| Knowledge | 02 + 09 |
++| Relations | 03 + 09 |
++| Decision Engine | 04 + 09; także 03 przy decyzjach dotyczących ludzi |
++| Task / GitHub Issue | 05 + 09 |
++| Gmail | 06 + 09; także 03 przy kontekście relacji |
++| Calendar / Contacts | 07 + 09 |
++| Drive / plik | 08 + 09 |
++| Daily Context Sync | 10 + wszystkie moduły używanych źródeł |
++| Zmiana architektury | 11 + wszystkie zmieniane moduły |
++
++### Weryfikacja wdrożenia
++
++Po utworzeniu:
++
++1. odczytaj główny indeks;
++2. odczytaj osobno każdy moduł 00–11;
++3. potwierdź, że żaden odczyt nie został obcięty;
++4. zapisz wszystkie URL-e lub identyfikatory w Workspace Index;
++5. jeżeli choć jeden moduł jest obcięty, nie zaliczaj etapu.
++
+ ## 9.1. Model operacyjny użytkownika
+ 
+ Może obejmować:
+@@ -1874,7 +1948,7 @@
+ Przygotuj wersję poniżej, uzupełniając link:
+ 
+ ```text
+-Przed każdą istotną pracą dotyczącą mnie, moich projektów, decyzji, relacji, zadań lub plików wczytaj instrukcje zawarte w tym dokumencie:
++Przed każdą istotną pracą dotyczącą mnie, moich projektów, decyzji, relacji, zadań lub plików wczytaj modularny indeks Constitution, Start Here, moduł 00 i wszystkie moduły właściwe dla zadania z tego dokumentu:
+ 
+ [LINK DO WORKSPACE CONSTITUTION]
+ 
+@@ -1902,7 +1976,7 @@
+ W nowej rozmowie użytkownik wpisuje:
+ 
+ ```text
+-Wczytaj Workspace Constitution z Notion i na jej podstawie podaj:
++Wczytaj modularny indeks Workspace Constitution, Start Here, moduł 00 oraz moduły 01, 05, 07 i 10 z Notion, a następnie podaj:
+ 
+ 1. wersję konstytucji,
+ 2. oczekiwane konto Notion,
+@@ -1940,7 +2014,7 @@
+ Wykonaj codzienną synchronizację Personal AI Workspace.
+ 
+ 1. Zweryfikuj właściwe konta.
+-2. Odczytaj Workspace Constitution oraz Start Here.
++2. Odczytaj modularny indeks Workspace Constitution, Start Here, moduł 00 i moduł 10.
+ 3. Odczytaj rekord ostatniego udanego Sync Run.
+ 4. Zbierz cały dostępny nowy kontekst od ostatniej synchronizacji:
+    - rozmowy i pamięć dostępne w bieżącym zakresie,
+@@ -2415,6 +2489,15 @@
+ - pokaż oczekiwane konto;
+ - poczekaj na zmianę.
+ 
++## Problem: Constitution albo jej moduł jest obcięty
++
++- nie uznawaj dokumentu za przeczytany;
++- pokaż użytkownikowi, który moduł został obcięty;
++- podziel go na mniejsze podmoduły;
++- utrzymuj około 7000 znaków treści operacyjnej lub mniej;
++- zaktualizuj indeks, Start Here, Workspace Index i changelog;
++- ponów test pełnego odczytu każdego modułu.
++
+ ## Problem: ChatGPT zna link, ale nie otwiera Constitution
+ 
+ - sprawdź Notion connector;
+@@ -2515,3 +2598,23 @@
+ 10. Nie udawaj wykonanych operacji.
+ 11. W Etapie 3 utwórz osobną stronę `O systemie` z pełnym manifestem, celem, działaniem i granicami.
+ 12. Dbaj o prostotę i uczciwość systemu.
++
++
++# DODATEK — TEST MODULARNEJ CONSTITUTION
++
++Przed przekazaniem Workspace wykonaj osobny test w świeżej rozmowie:
++
++```text
++Otwórz modularny indeks Workspace Constitution. Następnie odczytaj Start Here, moduł 00 oraz moduły 05, 06, 07 i 10.
++
++Podaj:
++1. regułę doboru modułów,
++2. etykiety zadań,
++3. zasady zatwierdzania wysyłki e-maila,
++4. zasady zapraszania uczestników Calendar,
++5. status Daily Context Sync.
++
++Dla każdego dokumentu powiedz, czy odczyt był pełny. Jeżeli którykolwiek został obcięty, nie odpowiadaj z pamięci — wskaż problem.
++```
++
++Test jest zaliczony tylko wtedy, gdy indeks i każdy wymagany moduł zostały odczytane bez obcięcia.

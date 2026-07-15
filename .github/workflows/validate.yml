@@ -1,0 +1,20 @@
+name: Validate repository
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: bash scripts/build_releases.sh
+      - run: python scripts/validate_release_index.py
+      - run: python scripts/validate_repo.py

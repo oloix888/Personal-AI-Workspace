@@ -1,0 +1,46 @@
+name: Publish releases
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - release-index.json
+      - source/**
+      - releases/**
+      - .github/workflows/publish-releases.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: bash scripts/build_releases.sh
+      - run: python scripts/validate_release_index.py
+      - name: Create or refresh releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r row; do
+            version=$(jq -r '.version' <<<"$row")
+            title=$(jq -r '.title' <<<"$row")
+            asset=$(jq -r '.asset' <<<"$row")
+            notes=$(jq -r '.notes_file' <<<"$row")
+            tag="v${version}"
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --title "$title" --notes-file "$notes"
+              gh release upload "$tag" "$asset" "build/releases/SHA256SUMS.txt" --repo "$GITHUB_REPOSITORY" --clobber
+            else
+              gh release create "$tag" "$asset" "build/releases/SHA256SUMS.txt" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$title" --notes-file "$notes"
+            fi
+          done < <(jq -c '.releases[]' release-index.json)

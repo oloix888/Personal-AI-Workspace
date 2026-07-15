@@ -1,0 +1,306 @@
+--- Personal-AI-Workspace-Creator-v1.4.md
++++ Personal-AI-Workspace-Creator-v1.5.md
+@@ -1,6 +1,6 @@
+ # Personal AI Workspace — uniwersalny kreator wdrożenia dla ChatGPT
+ 
+-**Wersja dokumentu:** 1.4  
++**Wersja dokumentu:** 1.5  
+ **Przeznaczenie:** samodzielne przeprowadzenie właściciela konta przez stworzenie osobistego systemu wiedzy, relacji, decyzji, zadań, komunikacji i automatyzacji opartego na ChatGPT, Notion oraz opcjonalnych integracjach.  
+ **Sposób użycia:** właściciel konta załącza ten plik w nowej rozmowie z ChatGPT i pisze:
+ 
+@@ -269,10 +269,11 @@
+ 5. **Knowledge** — trwałą wiedzę i knowledge graph.
+ 6. **Relations** — profile ludzi, relacje i historię interakcji.
+ 7. **Decision Engine** — system uczenia się z ważnych decyzji.
+-8. **Tasks** — system priorytetów A/B/C i synchronizacji z backendem zadań.
+-9. **Projects, Strategies, Observations, Journal i Working Notes**.
+-10. **Sources & Evidence** — źródła wiedzy i poziom wiarygodności.
+-11. Opcjonalne integracje:
++8. **System Evolution Lab** — jawny zeszyt obserwacji o jakości działania i kontrolowane propozycje ulepszeń.
++9. **Tasks** — system priorytetów A/B/C i synchronizacji z backendem zadań.
++10. **Projects, Strategies, Observations, Journal i Working Notes**.
++11. **Sources & Evidence** — źródła wiedzy i poziom wiarygodności.
++12. Opcjonalne integracje:
+    - Gmail;
+    - Google Calendar;
+    - Google Contacts;
+@@ -280,7 +281,7 @@
+    - GitHub;
+    - ChatGPT Scheduled Tasks;
+    - globalny skill Codexa.
+-12. Test potwierdzający, że nowa rozmowa:
++13. Test potwierdzający, że nowa rozmowa:
+     - zna link do konstytucji;
+     - rzeczywiście potrafi otworzyć dokument;
+     - odczytuje aktualne zasady;
+@@ -312,6 +313,7 @@
+ [ ] Knowledge Graph — rekomendowane
+ [ ] Relations — rekomendowane
+ [ ] Decision Engine — rekomendowane
++[ ] System Evolution Lab — rekomendowane
+ [ ] Tasks — rekomendowane
+ [ ] Gmail
+ [ ] Google Calendar
+@@ -1225,15 +1227,15 @@
+ 
+ ## 5.6. Zasady jakości Relations
+ 
+-- Nie zapisuj plotki jako faktu.
++- Nie pomijaj informacji tylko dlatego, że jest medyczna, intymna, seksualna, dotyczy substancji, dokładnej lokalizacji, finansów, religii, polityki, prawa albo prywatnego konfliktu.
++- Zapisuj ją, gdy jest materialnie istotna dla relacji, bezpieczeństwa, granic, zdrowia, decyzji, czasu, ryzyk albo celów właściciela.
++- Oznacz `Sensitivity: Confidential` i zapisz cel, źródło, datę/kontekst, epistemic status, perspektywę oraz confidence.
++- Plotkę lub pogłoskę można zapisać jako `Reported Claim`, `Interpretation` albo `Hypothesis`, nigdy automatycznie jako fakt.
+ - Nie diagnozuj psychologicznie.
+ - Nie wyciągaj trwałej cechy z pojedynczego zachowania.
+-- Zapisuj perspektywę.
+-- Zapisuj źródło.
+-- Oddziel obserwację od interpretacji.
+-- Przy sprzeczności zachowaj obie wersje.
++- Przy sprzeczności zachowaj obie wersje i źródła.
+ - Nie używaj wiedzy do manipulowania osobą.
+-- Nie zapisuj zbędnych danych intymnych lub medycznych.
++- Nie umieszczaj wrażliwego szczegółu w mailu, wydarzeniu, zadaniu albo publicznym dokumencie bez właściwej zgody właściciela.
+ - Nie usuwaj automatycznie danych Relations.
+ - Domyślnie archiwizuj.
+ - Trwałe usunięcie wymaga jawnego polecenia użytkownika.
+@@ -1660,9 +1662,170 @@
+ 
+ ---
+ 
++## Etap 7A — System Evolution Lab
++
++Ten moduł tworzy jeden jawny „zeszyt” działania systemu. Nie jest prywatnym scratchpadem ani ukrytym tokiem rozumowania.
++
++Utwórz pod głównym Workspace pełnostronicową bazę:
++
++```text
++System Evolution Lab
++```
++
++Pola:
++
++| Pole | Typ |
++|---|---|
++| Entry | Title |
++| Entry Type | Select |
++| Status | Select |
++| Captured At | Date |
++| Review Date | Date |
++| Affected Area | Multi-select |
++| Source URL | URL |
++| Observation | Text |
++| Evidence | Text |
++| Impact | Select |
++| Frequency | Select |
++| Confidence | Select |
++| Sensitivity | Select |
++| Suggested Improvement | Text |
++| Proposal Scope | Text |
++| Benefits | Text |
++| Costs and Risks | Text |
++| Counterarguments | Text |
++| Rollback Plan | Text |
++| Needs User Approval | Checkbox |
++| User Decision | Text |
++| Review Outcome | Text |
++| Next Action | Text |
++| Related Modules | Multi-select |
++| Created | Created time |
++| Last Edited | Last edited time |
++| Entry ID | Unique ID |
++
++Entry Type:
++
++```text
++Observation
++Incident
++Pattern
++Weekly Review
++Improvement Proposal
++Decision
++Implementation Result
++```
++
++Status:
++
++```text
++Captured
++Monitoring
++Ready for Review
++Proposed
++Approved
++Rejected
++Implemented
++Reverted
++Archived
++```
++
++Impact:
++
++```text
++Critical
++High
++Medium
++Low
++```
++
++Frequency:
++
++```text
++One-off
++Repeated
++Systemic
++Unknown
++```
++
++Utwórz widoki:
++
++```text
++Obserwacje
++Tygodniowe przeglądy
++Propozycje ulepszeń
++```
++
++## Kiedy dodawać obserwację
++
++Zapisuj, gdy wystąpi:
++
++- korekta użytkownika;
++- błąd konektora;
++- brak kontekstu pogarszający wynik;
++- niepotrzebnie powtórzona praca;
++- niejasna lub sprzeczna reguła;
++- powtarzalny wzorzec;
++- wysokowartościowa możliwość ulepszenia;
++- nieoczekiwany rezultat wdrożenia lub rollback.
++
++Nie zapisuj rutynowych czynności. Każdy wpis ma być jawny, zwięzły i możliwy do pokazania właścicielowi.
++
++## Tygodniowy przegląd
++
++Jeżeli od ostatniego Weekly Review minęło co najmniej 7 dni, podczas pierwszej odpowiedniej aktywnej sesji:
++
++1. odczytaj wpisy od poprzedniego review;
++2. scal duplikaty;
++3. oddziel pojedynczy incydent od wzorca;
++4. oceń impact, frequency, confidence, koszty i ryzyko;
++5. przedstaw maksymalnie 3 najważniejsze propozycje;
++6. podaj korzyści, kontrargumenty, zależności, odwracalność i rollback;
++7. poproś użytkownika o decyzję;
++8. wdrażaj wyłącznie zatwierdzony zakres;
++9. po wdrożeniu zapisz Implementation Result oraz datę sprawdzenia efektu.
++
++Nie proponuj przebudowy na podstawie jednego mało istotnego zdarzenia, chyba że ujawnia krytyczne ryzyko bezpieczeństwa, prywatności lub integralności danych.
++
++Dopóki nie istnieje prawdziwa automatyzacja, review jest `SESSION_TRIGGERED`, a nie background task.
++
++## Test
++
++Utwórz:
++
++1. jedną Observation opisującą problem wykryty podczas konfiguracji;
++2. jedną Improvement Proposal;
++3. jedną Weekly Review z terminem za 7 dni;
++4. potwierdź, że propozycja nie została wdrożona bez decyzji użytkownika.
++
++---
++
+ ## Etap 8 z 12 — Integracje Google i Gmail
+ 
+ Włączaj tylko wybrane moduły.
++
++## 8.0. Informacje wysokiej wrażliwości
++
++Nie stosuj blanketowego filtra „nie zapisuj, bo wrażliwe”.
++
++Można przechowywać informacje medyczne, intymne, seksualne, dotyczące substancji, dokładnej lokalizacji, finansów, religii, polityki, prawa i prywatnych konfliktów, gdy są materialnie istotne dla relacji, bezpieczeństwa, granic, zdrowia, decyzji, terminów, ryzyk albo celów właściciela.
++
++Wymagane są:
++
++- cel zapisu;
++- źródło;
++- data i kontekst;
++- epistemic status;
++- perspektywa;
++- confidence;
++- `Sensitivity: Confidential`;
++- okres obowiązywania, gdy informacja jest czasowa.
++
++Plotkę lub pogłoskę zapisuj jako Reported Claim, Interpretation albo Hypothesis — nigdy automatycznie jako Fact.
++
++Wewnętrzny zapis nie daje zgody na ujawnienie w mailu, Calendar, zadaniu, publicznym dokumencie albo rozmowie z osobą trzecią. Takie ujawnienie wymaga jawnej zgody właściciela.
++
++Hasła, kody jednorazowe, linki resetujące, tokeny i inne sekrety uwierzytelniające pozostają zakazane.
+ 
+ ## 8.1. Gmail
+ 
+@@ -1849,7 +2012,9 @@
+ 22. Daily Context Sync;
+ 23. zasady zmiany konstytucji;
+ 24. changelog;
+-25. politykę zgody na zmianę struktury oraz rozróżnienie między zmianą danych i zmianą architektury.
++25. politykę zgody na zmianę struktury oraz rozróżnienie między zmianą danych i zmianą architektury;
++26. politykę kontekstu wysokiej wrażliwości;
++27. System Evolution Lab i tygodniowy proces kontrolowanej ewolucji.
+ 
+ 
+ ## 9.0. Architektura modularna i limit odczytu
+@@ -2426,6 +2591,24 @@
+ - Task Outbox;
+ - numer i URL.
+ 
++## Test 7A — System Evolution Lab
++
++Sprawdź:
++- czy istnieją trzy widoki;
++- czy Observation zawiera evidence, impact i confidence;
++- czy Weekly Review ma termin za 7 dni;
++- czy propozycja wymaga decyzji użytkownika;
++- czy system nie obiecuje samodzielnej przebudowy w tle.
++
++## Test 7B — Kontekst wysokiej wrażliwości
++
++Utwórz bezpieczny testowy rekord oznaczony Confidential i sprawdź:
++- cel;
++- źródło;
++- epistemic status;
++- confidence;
++- zakaz automatycznego ujawniania na zewnątrz.
++
+ ## Test 8 — Gmail
+ 
+ Wyszukaj ograniczony, nieszkodliwy zakres. Nie zapisuj sekretów.
+@@ -2642,6 +2825,22 @@
+ - zaktualizuj link w Workspace Constitution, Start Here i raporcie przekazania;
+ - wykonaj odczyt kontrolny.
+ 
++## Problem: System Evolution Lab tworzy za dużo wpisów
++
++- zapisuj tylko korekty, awarie, powtarzalne tarcia i wysokowartościowe możliwości;
++- scal duplikaty;
++- ogranicz tygodniowy review do maksymalnie trzech propozycji;
++- nie twórz proposal z pojedynczego mało istotnego zdarzenia;
++- oceń po 30 dniach, czy tabela realnie poprawia system.
++
++## Problem: Wrażliwa informacja została pominięta
++
++- sprawdź, czy była materialnie istotna;
++- zapisz ją jako Confidential z celem, źródłem, statusem epistemicznym i confidence;
++- jeżeli to pogłoska, nie oznaczaj jej jako Fact;
++- nie ujawniaj jej na zewnątrz bez zgody właściciela;
++- nie zapisuj sekretów uwierzytelniających.
++
+ ## Problem: System staje się zbyt ciężki
+ 
+ - zatrzymaj rozbudowę;
+@@ -2705,7 +2904,9 @@
+ 12. Przed pierwszym zapisem strukturalnym uzyskaj zgodę na pokazany blueprint.
+ 13. Po zakończeniu podaj gotowy tekst do Personalizacji z frazą `przez connector Notion`.
+ 14. Podaj osobny gotowy tekst do instrukcji projektów, wymagający odczytu Constitution na początku każdej nowej rozmowy — bez wyjątków.
+-15. Dbaj o prostotę i uczciwość systemu.
++15. Utwórz System Evolution Lab i ustaw pierwszy Weekly Review za 7 dni.
++16. Nie odrzucaj materialnie istotnego kontekstu wyłącznie z powodu jego wrażliwości; stosuj Confidential, źródło i epistemic status.
++17. Dbaj o prostotę i uczciwość systemu.
+ 
+ 
+ # DODATEK — TEST MODULARNEJ CONSTITUTION
