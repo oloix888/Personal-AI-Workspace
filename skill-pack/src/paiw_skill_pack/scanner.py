@@ -260,10 +260,16 @@ PEOPLE_SENSITIVE_FIELDS = frozenset(
     }
 )
 STRUCTURED_FENCE_START_RE = re.compile(
-    r"(?m)^[ \t]*(?P<fence>`{3,}|~{3,})[ \t]*(?P<format>json|yaml|yml)[ \t]*(?:\r?\n|$)"
+    r"(?mi)^[ \t]*(?P<fence>`{3,}|~{3,})[ \t]*(?P<format>json|yaml|yml)"
+    r"(?=[ \t]|\r?\n|$)[^\r\n]*(?:\r?\n|$)"
 )
 STRUCTURED_FENCE_END_RE = re.compile(
-    r"(?m)^[ \t]*(?P<fence>`{3,}|~{3,})[ \t]*(?:\r?\n|$)"
+    r"(?m)^[ ]{0,3}(?P<fence>`{3,}|~{3,})[ \t]*(?:\r?\n|$)"
+)
+STRUCTURED_FENCE_CONTAINER_START_RE = re.compile(
+    r"(?mi)^[ \t]*(?:(?:>[ \t]*)+|(?:[-+*]|\d{1,9}[.)])[ \t]+)"
+    r"(?P<fence>`{3,}|~{3,})[ \t]*(?P<format>json|yaml|yml)"
+    r"(?=[ \t]|\r?\n|$)[^\r\n]*(?:\r?\n|$)"
 )
 STRUCTURED_YAML_FILE_SUFFIXES = frozenset({".yaml", ".yml"})
 PRIVATE_MANIFEST_RE = re.compile(r"\b" + re.escape(PRIVATE_MANIFEST) + r"\b", re.IGNORECASE)
@@ -789,10 +795,16 @@ def _iter_structured_fences(text: str, relative: str):
     Fences are parsed lexically so a trailing JSON/YAML fence cannot disappear
     from structured inspection merely because it lacks a closing delimiter.
     A valid closer uses the opener's character and at least its length, so a
-    shorter fence or a different marker remains payload rather than ending the
-    structured block.
+    shorter fence, a different marker, or indentation beyond three spaces
+    remains payload rather than ending the structured block. Structured fences
+    in block quote and list containers are rejected until they can be parsed
+    with the container semantics intact; allowing them to pass would bypass
+    connector-response inspection.
     The scanner must fail closed in both source files and ZIP members.
     """
+    if STRUCTURED_FENCE_CONTAINER_START_RE.search(text):
+        raise PublicSafetyError(f"malformed structured document: {relative}")
+
     position = 0
     while start := STRUCTURED_FENCE_START_RE.search(text, position):
         opener = start.group("fence")
@@ -809,7 +821,7 @@ def _iter_structured_fences(text: str, relative: str):
             raise PublicSafetyError(f"malformed structured document: {relative}")
         payload = text[start.end() : end.start()]
         line_offset = text.count("\n", 0, start.end())
-        yield start.group("format"), payload, line_offset
+        yield start.group("format").lower(), payload, line_offset
         position = end.end()
 
 

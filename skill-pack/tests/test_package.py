@@ -436,6 +436,38 @@ def test_packaging_rejects_nested_structured_connector_response_in_commonmark_fe
     assert not destination.exists()
 
 
+def test_packaging_rejects_gmail_yaml_after_an_invalid_indented_fence_closer(
+    tmp_path: Path,
+) -> None:
+    """A four-space pseudo-closer cannot hide later structured connector data."""
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path / "build",
+        "0.1.0-beta.1",
+    )
+    (built / "connector-export.md").write_text(
+        "~~~~YAML connector export\n"
+        "note: |\n"
+        "    ~~~~\n"
+        "id: synthetic-message\n"
+        "threadId: synthetic-thread\n"
+        "snippet: Synthetic private Gmail excerpt\n"
+        "payload:\n"
+        "  headers:\n"
+        "    - name: Subject\n"
+        "      value: Synthetic subject\n"
+        "~~~~\n",
+        encoding="utf-8",
+    )
+    destination = tmp_path / "minimal-skill.zip"
+
+    with pytest.raises(PublicSafetyError, match=r"connector-export\.md:"):
+        create_deterministic_zip(built, destination)
+
+    assert not destination.exists()
+
+
 @pytest.mark.parametrize(
     "historical_line",
     [

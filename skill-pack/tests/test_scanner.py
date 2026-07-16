@@ -452,6 +452,189 @@ def test_scanner_detects_structured_connector_payloads_in_commonmark_fence_varia
 
 
 @pytest.mark.parametrize(
+    ("label", "payload", "location", "member_name", "expected_path"),
+    [
+        (
+            "YAML",
+            """id: synthetic-message
+threadId: synthetic-thread
+snippet: Synthetic private Gmail excerpt
+payload:
+  headers:
+    - name: Subject
+      value: Synthetic subject
+""",
+            "uppercase-yaml.md",
+            None,
+            "uppercase-yaml.md",
+        ),
+        (
+            "yaml connector export",
+            """id: synthetic-message
+threadId: synthetic-thread
+snippet: Synthetic private Gmail excerpt
+payload:
+  headers:
+    - name: Subject
+      value: Synthetic subject
+""",
+            "yaml-info.md",
+            None,
+            "yaml-info.md",
+        ),
+        (
+            "JSON",
+            "\n".join(
+                (
+                    "{",
+                    '  "id": "synthetic-message",',
+                    '  "threadId": "synthetic-thread",',
+                    '  "snippet": "Synthetic private Gmail excerpt",',
+                    '  "payload": {"headers": [{"name": "Subject", "value": "Synthetic subject"}]}',
+                    "}",
+                    "",
+                )
+            ),
+            "uppercase-json.zip",
+            "docs/connector.md",
+            "uppercase-json.zip!docs/connector.md",
+        ),
+        (
+            "YML archived connector",
+            """id: synthetic-message
+threadId: synthetic-thread
+snippet: Synthetic private Gmail excerpt
+payload:
+  headers:
+    - name: Subject
+      value: Synthetic subject
+""",
+            "uppercase-yml.zip",
+            "docs/connector.md",
+            "uppercase-yml.zip!docs/connector.md",
+        ),
+    ],
+)
+def test_scanner_recognizes_case_insensitive_structured_fence_labels_and_info_strings(
+    tmp_path: Path,
+    label: str,
+    payload: str,
+    location: str,
+    member_name: str | None,
+    expected_path: str,
+) -> None:
+    """Recognized language labels cannot bypass scanning through case or info text."""
+    contents = f"~~~{label}\n{payload}~~~\n"
+    path = tmp_path / location
+    if member_name is None:
+        path.write_text(contents, encoding="utf-8")
+    else:
+        _write_zip_member(path, member_name, contents)
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    assert {
+        finding.rule for finding in findings if finding.path == expected_path
+    } == {"gmail_connector_response"}
+
+
+@pytest.mark.parametrize(
+    ("location", "member_name", "expected_path"),
+    [
+        ("indented-close.md", None, "indented-close.md"),
+        (
+            "indented-close.zip",
+            "docs/connector.md",
+            "indented-close.zip!docs/connector.md",
+        ),
+    ],
+)
+def test_scanner_ignores_four_space_fence_closers_until_a_valid_commonmark_closer(
+    tmp_path: Path,
+    location: str,
+    member_name: str | None,
+    expected_path: str,
+) -> None:
+    """Four leading spaces are payload, not a CommonMark closing fence."""
+    contents = """~~~~yaml connector export
+note: |
+    ~~~~
+id: synthetic-message
+threadId: synthetic-thread
+snippet: Synthetic private Gmail excerpt
+payload:
+  headers:
+    - name: Subject
+      value: Synthetic subject
+~~~~
+"""
+    path = tmp_path / location
+    if member_name is None:
+        path.write_text(contents, encoding="utf-8")
+    else:
+        _write_zip_member(path, member_name, contents)
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    assert {
+        finding.rule for finding in findings if finding.path == expected_path
+    } == {"gmail_connector_response"}
+
+
+@pytest.mark.parametrize(
+    ("container", "location", "member_name", "expected_path"),
+    [
+        ("quote", "quoted.md", None, "quoted.md"),
+        ("quote", "quoted.zip", "docs/quoted.md", "quoted.zip!docs/quoted.md"),
+        ("list", "listed.md", None, "listed.md"),
+        ("list", "listed.zip", "docs/listed.md", "listed.zip!docs/listed.md"),
+    ],
+)
+def test_scanner_fails_closed_for_structured_fences_in_quote_and_list_containers(
+    tmp_path: Path,
+    container: str,
+    location: str,
+    member_name: str | None,
+    expected_path: str,
+) -> None:
+    """Container fences are rejected until they receive container-aware parsing."""
+    if container == "quote":
+        marker = ">"
+        contents = (
+            f"{marker} ~~~yaml connector export\n"
+            f"{marker} id: synthetic-message\n"
+            f"{marker} threadId: synthetic-thread\n"
+            f"{marker} snippet: Synthetic private Gmail excerpt\n"
+            f"{marker} payload:\n"
+            f"{marker}   headers:\n"
+            f"{marker}     - name: Subject\n"
+            f"{marker}       value: Synthetic subject\n"
+            f"{marker} ~~~\n"
+        )
+    else:
+        marker = "-"
+        contents = (
+            f"{marker} ~~~yaml connector export\n"
+            "  id: synthetic-message\n"
+            "  threadId: synthetic-thread\n"
+            "  snippet: Synthetic private Gmail excerpt\n"
+            "  payload:\n"
+            "    headers:\n"
+            "      - name: Subject\n"
+            "        value: Synthetic subject\n"
+            "  ~~~\n"
+        )
+    path = tmp_path / location
+    if member_name is None:
+        path.write_text(contents, encoding="utf-8")
+    else:
+        _write_zip_member(path, member_name, contents)
+
+    with pytest.raises(PublicSafetyError, match=rf"malformed structured document: {expected_path}"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+@pytest.mark.parametrize(
     ("opening", "format", "closing", "location", "writer", "expected_path"),
     [
         (
