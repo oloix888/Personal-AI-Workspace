@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+import paiw_skill_pack.scanner as scanner
 from paiw_skill_pack.build import build_skill
 from paiw_skill_pack.validate import validate_skill_root
 
@@ -17,6 +18,29 @@ def test_built_fixture_is_valid(tmp_path: Path) -> None:
         "0.1.0-beta.1",
     )
     assert validate_skill_root(built) == []
+
+
+def test_validator_enforces_shared_stat_size_limit_before_reading_distributed_text(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path,
+        "0.1.0-beta.1",
+    )
+    target = built / "SKILL.md"
+    monkeypatch.setattr(scanner, "MAX_SCANNED_FILE_SIZE", 1)
+    original_read_text = Path.read_text
+
+    def fail_if_read(candidate: Path, *args: object, **kwargs: object) -> str:
+        if candidate == target:
+            pytest.fail("validator read oversized distributed text before its stat limit check")
+        return original_read_text(candidate, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_if_read)
+
+    assert "file exceeds size limit: SKILL.md" in validate_skill_root(built)
 
 
 def test_external_parent_reference_is_rejected(tmp_path: Path) -> None:

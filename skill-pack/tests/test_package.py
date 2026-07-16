@@ -5,6 +5,7 @@ import zipfile
 
 import pytest
 
+import paiw_skill_pack.scanner as scanner
 from paiw_skill_pack.build import build_skill
 from paiw_skill_pack.package import create_deterministic_zip, write_checksums
 from paiw_skill_pack.scanner import PublicSafetyError
@@ -115,6 +116,33 @@ def test_packaging_rejects_an_invalid_skill_tree_before_creating_an_archive(
     destination = tmp_path / "minimal-skill.zip"
 
     with pytest.raises(ValueError, match="missing NOTICE"):
+        create_deterministic_zip(built, destination)
+
+    assert not destination.exists()
+
+
+def test_packaging_does_not_read_oversized_input_before_the_scanner_gate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path / "build",
+        "0.1.0-beta.1",
+    )
+    target = built / "SKILL.md"
+    destination = tmp_path / "minimal-skill.zip"
+    monkeypatch.setattr(scanner, "MAX_SCANNED_FILE_SIZE", 1)
+    original_read_text = Path.read_text
+
+    def fail_if_read(candidate: Path, *args: object, **kwargs: object) -> str:
+        if candidate == target:
+            pytest.fail("package validation read oversized text before the scanner gate")
+        return original_read_text(candidate, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_if_read)
+
+    with pytest.raises(ValueError, match="file exceeds size limit: SKILL.md"):
         create_deterministic_zip(built, destination)
 
     assert not destination.exists()

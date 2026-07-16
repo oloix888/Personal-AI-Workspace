@@ -12,6 +12,7 @@ from urllib.parse import unquote, urlsplit
 import yaml
 
 from .frontmatter import FrontmatterError, parse_skill_frontmatter
+from .scanner import PublicSafetyError, read_bounded_file_bytes
 
 REFERENCE_DEFINITION_RE = re.compile(
     r"^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*(?:<(?P<angle>[^>\n]*)>|(?P<bare>\S+))",
@@ -125,6 +126,33 @@ MONITORED_RUNTIME_CALLS = (
     | DYNAMIC_LOOKUP_CALLS
     | DYNAMIC_RUNTIME_RESOLUTION_CALLS
 )
+
+
+class _DistributedReadError(ValueError):
+    """A distributed package file could not safely be read for validation."""
+
+
+def _relative_path(root: Path, path: Path) -> str:
+    return path.relative_to(root).as_posix()
+
+
+def _read_distributed_bytes(
+    root: Path, path: Path, relative: str | None = None
+) -> bytes:
+    rendered = relative or _relative_path(root, path)
+    try:
+        return read_bounded_file_bytes(path, rendered)
+    except PublicSafetyError as exc:
+        raise _DistributedReadError(str(exc)) from exc
+
+
+def _read_distributed_text(root: Path, path: Path) -> str:
+    relative = _relative_path(root, path)
+    contents = _read_distributed_bytes(root, path, relative)
+    try:
+        return contents.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _DistributedReadError(f"{relative} must be UTF-8 text") from exc
 
 
 @dataclass(frozen=True)
@@ -357,8 +385,8 @@ def _structured_file_reference_targets(payload: object) -> list[str]:
     return targets
 
 
-def _read_structured_config(path: Path) -> object:
-    contents = path.read_text(encoding="utf-8")
+def _read_structured_config(root: Path, path: Path) -> object:
+    contents = _read_distributed_text(root, path)
     if path.suffix == ".json":
         return json.loads(contents)
     if path.suffix == ".toml":
@@ -368,7 +396,9 @@ def _read_structured_config(path: Path) -> object:
 
 def _validate_structured_config_file_references(root: Path, path: Path) -> list[str]:
     try:
-        payload = _read_structured_config(path)
+        payload = _read_structured_config(root, path)
+    except _DistributedReadError as exc:
+        return [str(exc)]
     except (json.JSONDecodeError, tomllib.TOMLDecodeError, yaml.YAMLError) as exc:
         return [f"{path.relative_to(root)} contains invalid structured configuration: {exc}"]
     errors: list[str] = []
@@ -1142,7 +1172,9 @@ class _PythonRuntimePathVisitor(ast.NodeVisitor):
 
 def _validate_runtime_python_paths(root: Path, path: Path) -> list[str]:
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = ast.parse(_read_distributed_text(root, path), filename=str(path))
+    except _DistributedReadError as exc:
+        return [str(exc)]
     except SyntaxError as exc:
         return [f"{path.relative_to(root)} contains invalid Python: {exc.msg}"]
     visitor = _PythonRuntimePathVisitor(root, path)
@@ -1150,9 +1182,11 @@ def _validate_runtime_python_paths(root: Path, path: Path) -> list[str]:
     return visitor.errors
 
 
-def _validate_openai_metadata(path: Path) -> list[str]:
+def _validate_openai_metadata(root: Path, path: Path) -> list[str]:
     try:
-        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+        payload = yaml.safe_load(_read_distributed_text(root, path))
+    except _DistributedReadError as exc:
+        return [str(exc)]
     except yaml.YAMLError:
         return ["agents/openai.yaml contains invalid YAML"]
 
@@ -1191,9 +1225,9 @@ def _validate_legal_files(root: Path) -> list[str]:
             errors.append(f"missing {filename}")
             continue
         try:
-            actual = path.read_bytes()
-        except OSError:
-            errors.append(f"unable to read {filename}")
+            actual = _read_distributed_bytes(root, path)
+        except _DistributedReadError as exc:
+            errors.append(str(exc))
             continue
         try:
             contents = actual.decode("utf-8")
@@ -1207,9 +1241,11 @@ def _validate_legal_files(root: Path) -> list[str]:
                 errors.append("LICENSE missing Apache-2.0 text")
         canonical_path = CANONICAL_LEGAL_ROOT / filename
         try:
-            canonical = canonical_path.read_bytes()
-        except OSError:
-            errors.append(f"unable to read canonical {filename}")
+            canonical = _read_distributed_bytes(
+                root, canonical_path, f"canonical {filename}"
+            )
+        except _DistributedReadError as exc:
+            errors.append(str(exc))
             continue
         if actual != canonical:
             errors.append(f"{filename} does not match canonical repository legal file")
@@ -1223,8 +1259,8 @@ def validate_skill_root(root: Path) -> list[str]:
     if not skill_md.is_file():
         return ["missing SKILL.md"]
     try:
-        metadata = parse_skill_frontmatter(skill_md.read_text(encoding="utf-8"))
-    except FrontmatterError as exc:
+        metadata = parse_skill_frontmatter(_read_distributed_text(root, skill_md))
+    except (FrontmatterError, _DistributedReadError) as exc:
         errors.append(str(exc))
         metadata = {}
     if metadata.get("name") and metadata["name"] != root.name:
@@ -1233,13 +1269,17 @@ def validate_skill_root(root: Path) -> list[str]:
     if not openai_metadata.is_file():
         errors.append("missing agents/openai.yaml")
     else:
-        errors.extend(_validate_openai_metadata(openai_metadata))
+        errors.extend(_validate_openai_metadata(root, openai_metadata))
     if not (root / "VERSION").is_file():
         errors.append("missing VERSION")
     errors.extend(_validate_legal_files(root))
 
     for markdown in sorted(root.rglob("*.md")):
-        text = markdown.read_text(encoding="utf-8")
+        try:
+            text = _read_distributed_text(root, markdown)
+        except _DistributedReadError as exc:
+            errors.append(str(exc))
+            continue
         for target in _markdown_link_targets(text) + _html_link_targets(text):
             error = _validate_link_target(root, markdown, target)
             if error:
@@ -1253,7 +1293,11 @@ def validate_skill_root(root: Path) -> list[str]:
         for suffix in ("*.html", "*.htm", "*.xhtml")
         for path in root.rglob(suffix)
     ):
-        text = html.read_text(encoding="utf-8")
+        try:
+            text = _read_distributed_text(root, html)
+        except _DistributedReadError as exc:
+            errors.append(str(exc))
+            continue
         for target in _html_link_targets(text):
             error = _validate_link_target(root, html, target)
             if error:
@@ -1263,7 +1307,11 @@ def validate_skill_root(root: Path) -> list[str]:
             if error:
                 errors.append(error)
     for stylesheet in sorted(root.rglob("*.css")):
-        text = stylesheet.read_text(encoding="utf-8")
+        try:
+            text = _read_distributed_text(root, stylesheet)
+        except _DistributedReadError as exc:
+            errors.append(str(exc))
+            continue
         for target, reference_kind in _css_reference_targets(text):
             error = _validate_relative_target(root, stylesheet, target, reference_kind)
             if error:
@@ -1276,7 +1324,7 @@ def validate_skill_root(root: Path) -> list[str]:
         errors.extend(_validate_structured_config_file_references(root, config))
     for python_source in sorted(root.rglob("*.py")):
         errors.extend(_validate_runtime_python_paths(root, python_source))
-    return errors
+    return list(dict.fromkeys(errors))
 
 
 def assert_valid_skill(root: Path) -> None:

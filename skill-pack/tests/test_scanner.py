@@ -303,10 +303,7 @@ response:
         (
             "connector.md",
             lambda path, payload: path.write_text(
-                f"""\\
-```yaml
-{payload}```
-""",
+                "`" * 3 + "yaml\n" + payload + "`" * 3 + "\n",
                 encoding="utf-8",
             ),
             "connector.md",
@@ -331,6 +328,55 @@ id: 123e4567-e89b-12d3-a456-426614174000
 """
     path = tmp_path / location
     writer(path, payload)
+
+    with pytest.raises(PublicSafetyError, match=rf"malformed structured document: {expected_path}"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+@pytest.mark.parametrize(
+    ("format", "payload", "location", "writer", "expected_path"),
+    [
+        (
+            "json",
+            '{"safe": "value"}\n',
+            "unterminated.md",
+            lambda path, contents: path.write_text(contents, encoding="utf-8"),
+            "unterminated.md",
+        ),
+        (
+            "yaml",
+            "safe: value\n",
+            "unterminated.md",
+            lambda path, contents: path.write_text(contents, encoding="utf-8"),
+            "unterminated.md",
+        ),
+        (
+            "json",
+            '{"safe": "value"}\n',
+            "unterminated.zip",
+            lambda path, contents: _write_zip_member(path, "docs/example.md", contents),
+            "unterminated.zip!docs/example.md",
+        ),
+        (
+            "yaml",
+            "safe: value\n",
+            "unterminated.zip",
+            lambda path, contents: _write_zip_member(path, "docs/example.md", contents),
+            "unterminated.zip!docs/example.md",
+        ),
+    ],
+)
+def test_scanner_fails_closed_for_unterminated_recognized_structured_fences(
+    tmp_path: Path,
+    format: str,
+    payload: str,
+    location: str,
+    writer: Callable[[Path, str], object],
+    expected_path: str,
+) -> None:
+    contents = f"```{format}\n{payload}"
+    path = tmp_path / location
+    writer(path, contents)
 
     with pytest.raises(PublicSafetyError, match=rf"malformed structured document: {expected_path}"):
         scan_tree(tmp_path, "michal24749@gmail.com")

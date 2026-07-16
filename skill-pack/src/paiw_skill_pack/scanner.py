@@ -259,10 +259,10 @@ PEOPLE_SENSITIVE_FIELDS = frozenset(
         "biographies",
     }
 )
-STRUCTURED_FENCE_RE = re.compile(
-    r"(?ms)^[ \t]*```(?P<format>json|yaml|yml)[ \t]*\r?$\n"
-    r"(?P<payload>.*?)^[ \t]*```[ \t]*\r?$"
+STRUCTURED_FENCE_START_RE = re.compile(
+    r"(?m)^[ \t]*```(?P<format>json|yaml|yml)[ \t]*(?:\r?\n|$)"
 )
+STRUCTURED_FENCE_END_RE = re.compile(r"(?m)^[ \t]*```[ \t]*(?:\r?\n|$)")
 STRUCTURED_YAML_FILE_SUFFIXES = frozenset({".yaml", ".yml"})
 PRIVATE_MANIFEST_RE = re.compile(r"\b" + re.escape(PRIVATE_MANIFEST) + r"\b", re.IGNORECASE)
 ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
@@ -340,7 +340,13 @@ def _iter_public_paths(root: Path):
             yield path if path.is_file() else None, relative
 
 
-def _read_file_bytes(path: Path, relative: str) -> bytes:
+def read_bounded_file_bytes(path: Path, relative: str) -> bytes:
+    """Read a regular file only after applying the shared size gate.
+
+    Validation and scanning both consume distributed package text.  Keeping
+    their stat-based read limit in this one helper prevents package validation
+    from consuming oversized input before the privacy scanner runs.
+    """
     try:
         metadata = path.stat()
     except OSError as exc:
@@ -355,6 +361,10 @@ def _read_file_bytes(path: Path, relative: str) -> bytes:
         return path.read_bytes()
     except OSError as exc:
         raise PublicSafetyError(f"unable to read file: {relative}") from exc
+
+
+def _read_file_bytes(path: Path, relative: str) -> bytes:
+    return read_bounded_file_bytes(path, relative)
 
 
 def _decode_contents(contents: bytes, relative: str, suffix: str) -> str:
@@ -771,6 +781,24 @@ def _compose_json_documents(text: str, relative: str):
     yield from _compose_yaml_documents(normalized, relative)
 
 
+def _iter_structured_fences(text: str, relative: str):
+    """Yield recognized structured fences, rejecting an unclosed start fence.
+
+    Fences are parsed lexically so a trailing JSON/YAML fence cannot disappear
+    from structured inspection merely because it lacks a closing delimiter.
+    The scanner must fail closed in both source files and ZIP members.
+    """
+    position = 0
+    while start := STRUCTURED_FENCE_START_RE.search(text, position):
+        end = STRUCTURED_FENCE_END_RE.search(text, start.end())
+        if end is None:
+            raise PublicSafetyError(f"malformed structured document: {relative}")
+        payload = text[start.end() : end.start()]
+        line_offset = text.count("\n", 0, start.end())
+        yield start.group("format"), payload, line_offset
+        position = end.end()
+
+
 def _iter_embedded_json_documents(text: str, relative: str):
     decoder = json.JSONDecoder()
     position = 0
@@ -795,12 +823,10 @@ def _iter_structured_documents(text: str, relative: str, suffix: str):
         for node in _compose_yaml_documents(text, relative):
             if node is not None:
                 yield node, 0
-    for match in STRUCTURED_FENCE_RE.finditer(text):
-        payload = match.group("payload")
-        line_offset = text.count("\n", 0, match.start("payload"))
+    for format, payload, line_offset in _iter_structured_fences(text, relative):
         composer = (
             _compose_json_documents
-            if match.group("format") == "json"
+            if format == "json"
             else _compose_yaml_documents
         )
         for node in composer(payload, relative):
