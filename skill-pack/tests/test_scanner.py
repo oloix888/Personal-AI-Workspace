@@ -635,6 +635,103 @@ def test_scanner_fails_closed_for_structured_fences_in_quote_and_list_containers
 
 
 @pytest.mark.parametrize(
+    ("contents", "location", "member_name", "expected_path"),
+    [
+        (
+            "> - ~~~yaml connector export\n"
+            ">   id: synthetic-message\n"
+            ">   threadId: synthetic-thread\n"
+            ">   snippet: Synthetic private Gmail excerpt\n"
+            ">   payload:\n"
+            ">     headers:\n"
+            ">       - name: Subject\n"
+            ">         value: Synthetic subject\n"
+            ">   ~~~\n",
+            "quoted-list.md",
+            None,
+            "quoted-list.md",
+        ),
+        (
+            "- > ~~~yaml connector export\n"
+            "  > id: synthetic-message\n"
+            "  > threadId: synthetic-thread\n"
+            "  > snippet: Synthetic private Gmail excerpt\n"
+            "  > payload:\n"
+            "  >   headers:\n"
+            "  >     - name: Subject\n"
+            "  >       value: Synthetic subject\n"
+            "  > ~~~\n",
+            "listed-quote.zip",
+            "docs/connector.md",
+            "listed-quote.zip!docs/connector.md",
+        ),
+    ],
+)
+def test_scanner_detects_gmail_yaml_in_mixed_commonmark_quote_list_fences(
+    tmp_path: Path,
+    contents: str,
+    location: str,
+    member_name: str | None,
+    expected_path: str,
+) -> None:
+    """Mixed quote/list containers must not bypass structured Gmail scanning."""
+    path = tmp_path / location
+    if member_name is None:
+        path.write_text(contents, encoding="utf-8")
+    else:
+        _write_zip_member(path, member_name, contents)
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    assert {
+        finding.rule for finding in findings if finding.path == expected_path
+    } == {"gmail_connector_response"}
+
+
+@pytest.mark.parametrize(
+    ("contents", "location", "member_name", "expected_path"),
+    [
+        (
+            "> - ~~~yaml connector export\n"
+            ">   id: synthetic-message\n"
+            ">   threadId: synthetic-thread\n"
+            ">   snippet: Synthetic private Gmail excerpt\n"
+            ">   ~~\n",
+            "unterminated-quoted-list.md",
+            None,
+            "unterminated-quoted-list.md",
+        ),
+        (
+            "- > ~~~yaml connector export\n"
+            "  > id: synthetic-message\n"
+            "  > threadId: synthetic-thread\n"
+            "  > snippet: Synthetic private Gmail excerpt\n"
+            "  > ````\n",
+            "unterminated-listed-quote.zip",
+            "docs/connector.md",
+            "unterminated-listed-quote.zip!docs/connector.md",
+        ),
+    ],
+)
+def test_scanner_fails_closed_for_unterminated_mixed_commonmark_structured_fences(
+    tmp_path: Path,
+    contents: str,
+    location: str,
+    member_name: str | None,
+    expected_path: str,
+) -> None:
+    """Mixed containers retain the standard matching-fence fail-closed rule."""
+    path = tmp_path / location
+    if member_name is None:
+        path.write_text(contents, encoding="utf-8")
+    else:
+        _write_zip_member(path, member_name, contents)
+
+    with pytest.raises(PublicSafetyError, match=rf"malformed structured document: {expected_path}"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+@pytest.mark.parametrize(
     ("opening", "format", "closing", "location", "writer", "expected_path"),
     [
         (

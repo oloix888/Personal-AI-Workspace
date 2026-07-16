@@ -469,6 +469,48 @@ def test_packaging_rejects_gmail_yaml_after_an_invalid_indented_fence_closer(
 
 
 @pytest.mark.parametrize(
+    "contents",
+    [
+        "> - ~~~yaml connector export\n"
+        ">   id: synthetic-message\n"
+        ">   threadId: synthetic-thread\n"
+        ">   snippet: Synthetic private Gmail excerpt\n"
+        ">   payload:\n"
+        ">     headers:\n"
+        ">       - name: Subject\n"
+        ">         value: Synthetic subject\n"
+        ">   ~~~\n",
+        "- > ~~~yaml connector export\n"
+        "  > id: synthetic-message\n"
+        "  > threadId: synthetic-thread\n"
+        "  > snippet: Synthetic private Gmail excerpt\n"
+        "  > payload:\n"
+        "  >   headers:\n"
+        "  >     - name: Subject\n"
+        "  >       value: Synthetic subject\n"
+        "  > ~~~\n",
+    ],
+)
+def test_packaging_rejects_gmail_yaml_in_mixed_commonmark_quote_list_fences(
+    tmp_path: Path, contents: str
+) -> None:
+    """Package creation runs the same mixed-container Gmail scanner gate."""
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path / "build",
+        "0.1.0-beta.1",
+    )
+    (built / "connector-export.md").write_text(contents, encoding="utf-8")
+    destination = tmp_path / "minimal-skill.zip"
+
+    with pytest.raises(PublicSafetyError, match=r"connector-export\.md:"):
+        create_deterministic_zip(built, destination)
+
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize(
     "historical_line",
     [
         "Private task repository: " + "oloix888" + "/" + "Apex",

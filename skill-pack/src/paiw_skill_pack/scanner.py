@@ -271,6 +271,18 @@ STRUCTURED_FENCE_CONTAINER_START_RE = re.compile(
     r"(?P<fence>`{3,}|~{3,})[ \t]*(?P<format>json|yaml|yml)"
     r"(?=[ \t]|\r?\n|$)[^\r\n]*(?:\r?\n|$)"
 )
+STRUCTURED_FENCE_QUOTE_LIST_START_RE = re.compile(
+    r"(?mi)^(?P<indent>[ ]{0,3})>(?P<quote_space>[ \t]*)"
+    r"(?P<list_marker>[-+*]|\d{1,9}[.)])(?P<list_space>[ \t]+)"
+    r"(?P<fence>`{3,}|~{3,})[ \t]*(?P<format>json|yaml|yml)"
+    r"(?=[ \t]|\r?\n|$)[^\r\n]*(?:\r?\n|$)"
+)
+STRUCTURED_FENCE_LIST_QUOTE_START_RE = re.compile(
+    r"(?mi)^(?P<indent>[ ]{0,3})(?P<list_marker>[-+*]|\d{1,9}[.)])"
+    r"(?P<list_space>[ \t]+)>(?P<quote_space>[ \t]*)"
+    r"(?P<fence>`{3,}|~{3,})[ \t]*(?P<format>json|yaml|yml)"
+    r"(?=[ \t]|\r?\n|$)[^\r\n]*(?:\r?\n|$)"
+)
 STRUCTURED_YAML_FILE_SUFFIXES = frozenset({".yaml", ".yml"})
 PRIVATE_MANIFEST_RE = re.compile(r"\b" + re.escape(PRIVATE_MANIFEST) + r"\b", re.IGNORECASE)
 ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
@@ -789,6 +801,107 @@ def _compose_json_documents(text: str, relative: str):
     yield from _compose_yaml_documents(normalized, relative)
 
 
+def _matches_closing_fence(value: str, opener: str) -> bool:
+    return bool(
+        re.fullmatch(
+            rf"{re.escape(opener[0])}{{{len(opener)},}}[ \t]*",
+            value,
+        )
+    )
+
+
+def _next_text_line(text: str, position: int) -> tuple[str, str, int]:
+    """Return a line without its ending, its ending, and the next position."""
+    ending_position = text.find("\n", position)
+    if ending_position == -1:
+        line = text[position:]
+        ending = ""
+        next_position = len(text)
+    else:
+        line = text[position:ending_position]
+        ending = "\n"
+        next_position = ending_position + 1
+    if line.endswith("\r"):
+        line = line[:-1]
+        ending = "\r" + ending
+    return line, ending, next_position
+
+
+def _iter_mixed_container_structured_fences(text: str, relative: str):
+    """Yield structured fences nested in a quote/list or list/quote pair.
+
+    The parser intentionally accepts only the two mixed container forms for
+    which it can preserve the contained YAML/JSON verbatim: ``> -`` and
+    ``- >``. Other container forms retain the existing fail-closed behavior.
+    Every continuation line must remain in the same container, and a closing
+    fence must use the opening marker with at least its opening length.
+    """
+    starts = sorted(
+        (
+            *( (match, "quote_list") for match in STRUCTURED_FENCE_QUOTE_LIST_START_RE.finditer(text) ),
+            *( (match, "list_quote") for match in STRUCTURED_FENCE_LIST_QUOTE_START_RE.finditer(text) ),
+        ),
+        key=lambda item: item[0].start(),
+    )
+    consumed_until = 0
+    for start, container in starts:
+        if start.start() < consumed_until:
+            continue
+
+        quote_space = start.group("quote_space")
+        list_space = start.group("list_space")
+        if "\t" in quote_space or "\t" in list_space:
+            raise PublicSafetyError(f"malformed structured document: {relative}")
+
+        opener = start.group("fence")
+        indent = start.group("indent")
+        list_marker = start.group("list_marker")
+        position = start.end()
+        payload_lines: list[str] = []
+
+        if container == "quote_list":
+            quote_prefix = indent + ">"
+            continuation_prefix = quote_space + (" " * len(list_marker)) + list_space
+
+            def strip_container(line: str) -> str | None:
+                if not line.startswith(quote_prefix):
+                    return None
+                after_quote = line[len(quote_prefix) :]
+                if after_quote.startswith(continuation_prefix):
+                    return after_quote[len(continuation_prefix) :]
+                if not after_quote.strip(" \t"):
+                    return ""
+                return None
+
+        else:
+            continuation_indent = len(indent) + len(list_marker) + len(list_space)
+            continuation_prefix = " " * continuation_indent + ">" + quote_space
+
+            def strip_container(line: str) -> str | None:
+                if line.startswith(continuation_prefix):
+                    return line[len(continuation_prefix) :]
+                if line.startswith(" " * continuation_indent + ">") and not line[
+                    continuation_indent + 1 :
+                ].strip(" \t"):
+                    return ""
+                return None
+
+        while position < len(text):
+            line, ending, next_position = _next_text_line(text, position)
+            contained_line = strip_container(line)
+            if contained_line is None:
+                raise PublicSafetyError(f"malformed structured document: {relative}")
+            if _matches_closing_fence(contained_line, opener):
+                line_offset = text.count("\n", 0, start.end())
+                yield start.group("format").lower(), "".join(payload_lines), line_offset
+                consumed_until = next_position
+                break
+            payload_lines.append(contained_line + ending)
+            position = next_position
+        else:
+            raise PublicSafetyError(f"malformed structured document: {relative}")
+
+
 def _iter_structured_fences(text: str, relative: str):
     """Yield CommonMark structured fences, rejecting an unclosed start fence.
 
@@ -796,14 +909,16 @@ def _iter_structured_fences(text: str, relative: str):
     from structured inspection merely because it lacks a closing delimiter.
     A valid closer uses the opener's character and at least its length, so a
     shorter fence, a different marker, or indentation beyond three spaces
-    remains payload rather than ending the structured block. Structured fences
-    in block quote and list containers are rejected until they can be parsed
-    with the container semantics intact; allowing them to pass would bypass
+    remains payload rather than ending the structured block. The supported
+    mixed quote/list and list/quote forms are decontainerized before scanning;
+    unsupported container forms are rejected so they cannot bypass
     connector-response inspection.
     The scanner must fail closed in both source files and ZIP members.
     """
     if STRUCTURED_FENCE_CONTAINER_START_RE.search(text):
         raise PublicSafetyError(f"malformed structured document: {relative}")
+
+    yield from _iter_mixed_container_structured_fences(text, relative)
 
     position = 0
     while start := STRUCTURED_FENCE_START_RE.search(text, position):
