@@ -638,6 +638,53 @@ def test_scanner_fails_closed_for_structured_fences_in_quote_and_list_containers
     ("contents", "location", "member_name", "expected_path"),
     [
         (
+            "\t~~~yaml\n"
+            "safe: value\n"
+            "~~~\n",
+            "tab-indented.md",
+            None,
+            "tab-indented.md",
+        ),
+        (
+            "    - > ~~~yaml\n"
+            "      > safe: value\n"
+            "      > ~~~\n",
+            "four-space-mixed.zip",
+            "docs/connector.md",
+            "four-space-mixed.zip!docs/connector.md",
+        ),
+        (
+            "> - ~~~yaml\n"
+            ">   safe: value\n"
+            ">\t  ~~~\n",
+            "mismatched-mixed-package.zip",
+            "skill/SKILL.md",
+            "mismatched-mixed-package.zip!skill/SKILL.md",
+        ),
+    ],
+)
+def test_scanner_fails_closed_for_non_commonmark_or_mismatched_structured_fence_indentation(
+    tmp_path: Path,
+    contents: str,
+    location: str,
+    member_name: str | None,
+    expected_path: str,
+) -> None:
+    """Tabs, four-space prefixes, and mixed-container drift cannot hide payloads."""
+    path = tmp_path / location
+    if member_name is None:
+        path.write_text(contents, encoding="utf-8")
+    else:
+        _write_zip_member(path, member_name, contents)
+
+    with pytest.raises(PublicSafetyError, match=rf"malformed structured document: {expected_path}"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+@pytest.mark.parametrize(
+    ("contents", "location", "member_name", "expected_path"),
+    [
+        (
             "> - ~~~yaml connector export\n"
             ">   id: synthetic-message\n"
             ">   threadId: synthetic-thread\n"

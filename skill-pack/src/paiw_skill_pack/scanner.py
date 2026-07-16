@@ -260,14 +260,14 @@ PEOPLE_SENSITIVE_FIELDS = frozenset(
     }
 )
 STRUCTURED_FENCE_START_RE = re.compile(
-    r"(?mi)^[ \t]*(?P<fence>`{3,}|~{3,})[ \t]*(?P<format>json|yaml|yml)"
+    r"(?mi)^(?P<indent>[ \t]*)(?P<fence>`{3,}|~{3,})[ \t]*(?P<format>json|yaml|yml)"
     r"(?=[ \t]|\r?\n|$)[^\r\n]*(?:\r?\n|$)"
 )
 STRUCTURED_FENCE_END_RE = re.compile(
     r"(?m)^[ ]{0,3}(?P<fence>`{3,}|~{3,})[ \t]*(?:\r?\n|$)"
 )
 STRUCTURED_FENCE_CONTAINER_START_RE = re.compile(
-    r"(?mi)^[ \t]*(?P<prefix>(?:>[ \t]*|(?:[-+*]|\d{1,9}[.)])[ \t]+)+)"
+    r"(?mi)^(?P<indent>[ \t]*)(?P<prefix>(?:>[ \t]*|(?:[-+*]|\d{1,9}[.)])[ \t]+)+)"
     r"(?P<fence>`{3,}|~{3,})[ \t]*(?P<format>json|yaml|yml)"
     r"(?=[ \t]|\r?\n|$)[^\r\n]*(?:\r?\n|$)"
 )
@@ -814,6 +814,11 @@ def _matches_closing_fence(value: str, opener: str) -> bool:
     )
 
 
+def _has_invalid_commonmark_fence_indent(indent: str) -> bool:
+    """Tabs and four or more spaces do not form supported fence indentation."""
+    return "\t" in indent or len(indent) > 3
+
+
 def _next_text_line(text: str, position: int) -> tuple[str, str, int]:
     """Return a line without its ending, its ending, and the next position."""
     ending_position = text.find("\n", position)
@@ -920,6 +925,10 @@ def _iter_structured_fences(text: str, relative: str):
     The scanner must fail closed in both source files and ZIP members.
     """
     for container_start in STRUCTURED_FENCE_CONTAINER_START_RE.finditer(text):
+        if _has_invalid_commonmark_fence_indent(
+            container_start.group("indent")
+        ) or "\t" in container_start.group("prefix"):
+            raise PublicSafetyError(f"malformed structured document: {relative}")
         if not SUPPORTED_MIXED_CONTAINER_PREFIX_RE.fullmatch(
             container_start.group("prefix")
         ):
@@ -929,6 +938,8 @@ def _iter_structured_fences(text: str, relative: str):
 
     position = 0
     while start := STRUCTURED_FENCE_START_RE.search(text, position):
+        if _has_invalid_commonmark_fence_indent(start.group("indent")):
+            raise PublicSafetyError(f"malformed structured document: {relative}")
         opener = start.group("fence")
         end = next(
             (

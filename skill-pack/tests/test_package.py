@@ -471,6 +471,36 @@ def test_packaging_rejects_gmail_yaml_after_an_invalid_indented_fence_closer(
 @pytest.mark.parametrize(
     "contents",
     [
+        "\t~~~yaml\n"
+        "safe: value\n"
+        "~~~\n",
+        "    - > ~~~yaml\n"
+        "      > safe: value\n"
+        "      > ~~~\n",
+    ],
+)
+def test_packaging_fails_closed_for_non_commonmark_structured_fence_indentation(
+    tmp_path: Path, contents: str
+) -> None:
+    """The package gate rejects structured fences its CommonMark parser cannot own."""
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path / "build",
+        "0.1.0-beta.1",
+    )
+    (built / "connector-export.md").write_text(contents, encoding="utf-8")
+    destination = tmp_path / "minimal-skill.zip"
+
+    with pytest.raises(PublicSafetyError, match=r"connector-export\.md"):
+        create_deterministic_zip(built, destination)
+
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
         "> - ~~~yaml connector export\n"
         ">   id: synthetic-message\n"
         ">   threadId: synthetic-thread\n"
