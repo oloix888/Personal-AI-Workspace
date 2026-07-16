@@ -689,6 +689,45 @@ def test_scanner_detects_gmail_yaml_in_mixed_commonmark_quote_list_fences(
 
 
 @pytest.mark.parametrize(
+    ("location", "member_name", "expected_path"),
+    [
+        ("repeated-quoted-list.md", None, "repeated-quoted-list.md"),
+        (
+            "repeated-quoted-list.zip",
+            "docs/connector.md",
+            "repeated-quoted-list.zip!docs/connector.md",
+        ),
+    ],
+)
+def test_scanner_fails_closed_for_repeated_mixed_container_structured_fences(
+    tmp_path: Path,
+    location: str,
+    member_name: str | None,
+    expected_path: str,
+) -> None:
+    """Repeated quote/list prefixes cannot hide a structured Gmail response."""
+    contents = (
+        "> > - ~~~yaml connector export\n"
+        "> >   id: synthetic-message\n"
+        "> >   threadId: synthetic-thread\n"
+        "> >   snippet: Synthetic private Gmail excerpt\n"
+        "> >   payload:\n"
+        "> >     headers:\n"
+        "> >       - name: Subject\n"
+        "> >         value: Synthetic subject\n"
+        "> >   ~~~\n"
+    )
+    path = tmp_path / location
+    if member_name is None:
+        path.write_text(contents, encoding="utf-8")
+    else:
+        _write_zip_member(path, member_name, contents)
+
+    with pytest.raises(PublicSafetyError, match=rf"malformed structured document: {expected_path}"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+@pytest.mark.parametrize(
     ("contents", "location", "member_name", "expected_path"),
     [
         (

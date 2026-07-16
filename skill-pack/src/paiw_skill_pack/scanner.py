@@ -267,9 +267,13 @@ STRUCTURED_FENCE_END_RE = re.compile(
     r"(?m)^[ ]{0,3}(?P<fence>`{3,}|~{3,})[ \t]*(?:\r?\n|$)"
 )
 STRUCTURED_FENCE_CONTAINER_START_RE = re.compile(
-    r"(?mi)^[ \t]*(?:(?:>[ \t]*)+|(?:[-+*]|\d{1,9}[.)])[ \t]+)"
+    r"(?mi)^[ \t]*(?P<prefix>(?:>[ \t]*|(?:[-+*]|\d{1,9}[.)])[ \t]+)+)"
     r"(?P<fence>`{3,}|~{3,})[ \t]*(?P<format>json|yaml|yml)"
     r"(?=[ \t]|\r?\n|$)[^\r\n]*(?:\r?\n|$)"
+)
+SUPPORTED_MIXED_CONTAINER_PREFIX_RE = re.compile(
+    r"(?:>[ \t]*(?:[-+*]|\d{1,9}[.)])[ \t]+|"
+    r"(?:[-+*]|\d{1,9}[.)])[ \t]+>[ \t]*)\Z"
 )
 STRUCTURED_FENCE_QUOTE_LIST_START_RE = re.compile(
     r"(?mi)^(?P<indent>[ ]{0,3})>(?P<quote_space>[ \t]*)"
@@ -915,8 +919,11 @@ def _iter_structured_fences(text: str, relative: str):
     connector-response inspection.
     The scanner must fail closed in both source files and ZIP members.
     """
-    if STRUCTURED_FENCE_CONTAINER_START_RE.search(text):
-        raise PublicSafetyError(f"malformed structured document: {relative}")
+    for container_start in STRUCTURED_FENCE_CONTAINER_START_RE.finditer(text):
+        if not SUPPORTED_MIXED_CONTAINER_PREFIX_RE.fullmatch(
+            container_start.group("prefix")
+        ):
+            raise PublicSafetyError(f"malformed structured document: {relative}")
 
     yield from _iter_mixed_container_structured_fences(text, relative)
 

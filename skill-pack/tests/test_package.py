@@ -510,6 +510,36 @@ def test_packaging_rejects_gmail_yaml_in_mixed_commonmark_quote_list_fences(
     assert not destination.exists()
 
 
+def test_packaging_fails_closed_for_repeated_mixed_container_gmail_yaml(
+    tmp_path: Path,
+) -> None:
+    """The package gate shares the scanner's repeated-container protection."""
+    built = build_skill(
+        FIXTURES / "minimal-skill",
+        ROOT / "skills/_shared",
+        tmp_path / "build",
+        "0.1.0-beta.1",
+    )
+    (built / "connector-export.md").write_text(
+        "> > - ~~~yaml connector export\n"
+        "> >   id: synthetic-message\n"
+        "> >   threadId: synthetic-thread\n"
+        "> >   snippet: Synthetic private Gmail excerpt\n"
+        "> >   payload:\n"
+        "> >     headers:\n"
+        "> >       - name: Subject\n"
+        "> >         value: Synthetic subject\n"
+        "> >   ~~~\n",
+        encoding="utf-8",
+    )
+    destination = tmp_path / "minimal-skill.zip"
+
+    with pytest.raises(PublicSafetyError, match=r"connector-export\.md"):
+        create_deterministic_zip(built, destination)
+
+    assert not destination.exists()
+
+
 @pytest.mark.parametrize(
     "historical_line",
     [
