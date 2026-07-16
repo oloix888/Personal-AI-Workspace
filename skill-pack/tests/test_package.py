@@ -405,7 +405,7 @@ def test_packaging_rejects_reviewers_quoted_private_json_before_creating_an_arch
     assert not destination.exists()
 
 
-def test_packaging_rejects_nested_structured_connector_response_input(
+def test_packaging_rejects_nested_structured_connector_response_in_commonmark_fence(
     tmp_path: Path,
 ) -> None:
     built = build_skill(
@@ -414,7 +414,8 @@ def test_packaging_rejects_nested_structured_connector_response_input(
         tmp_path / "build",
         "0.1.0-beta.1",
     )
-    (built / "connector-export.yaml").write_text(
+    (built / "connector-export.md").write_text(
+        "~~~~yml\n"
         "response:\n"
         "  message:\n"
         "    id: synthetic-message\n"
@@ -423,12 +424,13 @@ def test_packaging_rejects_nested_structured_connector_response_input(
         "    payload:\n"
         "      headers:\n"
         "        - name: Subject\n"
-        "          value: Synthetic subject\n",
+        "          value: Synthetic subject\n"
+        "~~~~\n",
         encoding="utf-8",
     )
     destination = tmp_path / "minimal-skill.zip"
 
-    with pytest.raises(PublicSafetyError, match="connector-export.yaml:3"):
+    with pytest.raises(PublicSafetyError, match="connector-export.md:4"):
         create_deterministic_zip(built, destination)
 
     assert not destination.exists()

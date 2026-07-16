@@ -260,9 +260,11 @@ PEOPLE_SENSITIVE_FIELDS = frozenset(
     }
 )
 STRUCTURED_FENCE_START_RE = re.compile(
-    r"(?m)^[ \t]*```(?P<format>json|yaml|yml)[ \t]*(?:\r?\n|$)"
+    r"(?m)^[ \t]*(?P<fence>`{3,}|~{3,})[ \t]*(?P<format>json|yaml|yml)[ \t]*(?:\r?\n|$)"
 )
-STRUCTURED_FENCE_END_RE = re.compile(r"(?m)^[ \t]*```[ \t]*(?:\r?\n|$)")
+STRUCTURED_FENCE_END_RE = re.compile(
+    r"(?m)^[ \t]*(?P<fence>`{3,}|~{3,})[ \t]*(?:\r?\n|$)"
+)
 STRUCTURED_YAML_FILE_SUFFIXES = frozenset({".yaml", ".yml"})
 PRIVATE_MANIFEST_RE = re.compile(r"\b" + re.escape(PRIVATE_MANIFEST) + r"\b", re.IGNORECASE)
 ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
@@ -782,15 +784,27 @@ def _compose_json_documents(text: str, relative: str):
 
 
 def _iter_structured_fences(text: str, relative: str):
-    """Yield recognized structured fences, rejecting an unclosed start fence.
+    """Yield CommonMark structured fences, rejecting an unclosed start fence.
 
     Fences are parsed lexically so a trailing JSON/YAML fence cannot disappear
     from structured inspection merely because it lacks a closing delimiter.
+    A valid closer uses the opener's character and at least its length, so a
+    shorter fence or a different marker remains payload rather than ending the
+    structured block.
     The scanner must fail closed in both source files and ZIP members.
     """
     position = 0
     while start := STRUCTURED_FENCE_START_RE.search(text, position):
-        end = STRUCTURED_FENCE_END_RE.search(text, start.end())
+        opener = start.group("fence")
+        end = next(
+            (
+                candidate
+                for candidate in STRUCTURED_FENCE_END_RE.finditer(text, start.end())
+                if candidate.group("fence")[0] == opener[0]
+                and len(candidate.group("fence")) >= len(opener)
+            ),
+            None,
+        )
         if end is None:
             raise PublicSafetyError(f"malformed structured document: {relative}")
         payload = text[start.end() : end.start()]

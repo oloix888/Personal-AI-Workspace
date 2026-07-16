@@ -382,6 +382,145 @@ def test_scanner_fails_closed_for_unterminated_recognized_structured_fences(
         scan_tree(tmp_path, "michal24749@gmail.com")
 
 
+@pytest.mark.parametrize(
+    ("fence", "format", "payload", "location", "writer", "expected_path"),
+    [
+        (
+            "`" * 4,
+            "json",
+            "{\n"
+            '  "id": "synthetic-message",\n'
+            '  "threadId": "synthetic-thread",\n'
+            '  "snippet": "Synthetic private Gmail excerpt",\n'
+            '  "payload": {"headers": [{"name": "Subject", "value": "Synthetic subject"}]}\n'
+            "}\n",
+            "connector.md",
+            lambda path, contents: path.write_text(contents, encoding="utf-8"),
+            "connector.md",
+        ),
+        (
+            "~" * 3,
+            "yaml",
+            """id: synthetic-message
+threadId: synthetic-thread
+snippet: Synthetic private Gmail excerpt
+payload:
+  headers:
+    - name: Subject
+      value: Synthetic subject
+""",
+            "connector.zip",
+            lambda path, contents: _write_zip_member(path, "docs/connector.md", contents),
+            "connector.zip!docs/connector.md",
+        ),
+        (
+            "~" * 4,
+            "yml",
+            """id: synthetic-message
+threadId: synthetic-thread
+snippet: Synthetic private Gmail excerpt
+payload:
+  headers:
+    - name: Subject
+      value: Synthetic subject
+""",
+            "package.zip",
+            lambda path, contents: _write_zip_member(path, "skill/SKILL.md", contents),
+            "package.zip!skill/SKILL.md",
+        ),
+    ],
+)
+def test_scanner_detects_structured_connector_payloads_in_commonmark_fence_variants(
+    tmp_path: Path,
+    fence: str,
+    format: str,
+    payload: str,
+    location: str,
+    writer: Callable[[Path, str], object],
+    expected_path: str,
+) -> None:
+    """Structured payloads cannot bypass scanning with valid CommonMark fences."""
+    contents = f"{fence}{format}\n{payload}{fence}\n"
+    path = tmp_path / location
+    writer(path, contents)
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    assert {
+        finding.rule for finding in findings if finding.path == expected_path
+    } == {"gmail_connector_response"}
+
+
+@pytest.mark.parametrize(
+    ("opening", "format", "closing", "location", "writer", "expected_path"),
+    [
+        (
+            "`" * 4,
+            "json",
+            "`" * 3,
+            "unterminated.md",
+            lambda path, contents: path.write_text(contents, encoding="utf-8"),
+            "unterminated.md",
+        ),
+        (
+            "~" * 3,
+            "yaml",
+            "`" * 3,
+            "unterminated.zip",
+            lambda path, contents: _write_zip_member(path, "docs/example.md", contents),
+            "unterminated.zip!docs/example.md",
+        ),
+        (
+            "~" * 4,
+            "yml",
+            "~" * 3,
+            "unterminated-package.zip",
+            lambda path, contents: _write_zip_member(path, "skill/SKILL.md", contents),
+            "unterminated-package.zip!skill/SKILL.md",
+        ),
+    ],
+)
+def test_scanner_fails_closed_when_commonmark_structured_fence_has_no_matching_close(
+    tmp_path: Path,
+    opening: str,
+    format: str,
+    closing: str,
+    location: str,
+    writer: Callable[[Path, str], object],
+    expected_path: str,
+) -> None:
+    """A shorter or different-character fence must not close a structured block."""
+    contents = f"{opening}{format}\n{{\"safe\": \"value\"}}\n{closing}\n"
+    path = tmp_path / location
+    writer(path, contents)
+
+    with pytest.raises(PublicSafetyError, match=rf"malformed structured document: {expected_path}"):
+        scan_tree(tmp_path, "michal24749@gmail.com")
+
+
+def test_scanner_allows_a_longer_matching_commonmark_fence_to_close_structured_payload(
+    tmp_path: Path,
+) -> None:
+    """CommonMark allows a closing fence longer than the recognized opener."""
+    (tmp_path / "long-close.md").write_text(
+        "```json\n"
+        "{\n"
+        '  "id": "synthetic-message",\n'
+        '  "threadId": "synthetic-thread",\n'
+        '  "snippet": "Synthetic private Gmail excerpt",\n'
+        '  "payload": {"headers": [{"name": "Subject", "value": "Synthetic subject"}]}\n'
+        "}\n"
+        "````\n",
+        encoding="utf-8",
+    )
+
+    findings = scan_tree(tmp_path, "michal24749@gmail.com")
+
+    assert {(finding.path, finding.rule) for finding in findings} == {
+        ("long-close.md", "gmail_connector_response")
+    }
+
+
 def _write_zip_member(path: Path, member_name: str, contents: str) -> None:
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr(member_name, contents)
