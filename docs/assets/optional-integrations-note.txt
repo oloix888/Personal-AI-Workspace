@@ -1,0 +1,1 @@
+The installation page uses local, text-based logo badges for optional integrations. They avoid external image dependencies and do not imply endorsement or ownership of third-party trademarks. Required ChatGPT/Codex and Notion cards use locally generated explanatory SVG artwork.

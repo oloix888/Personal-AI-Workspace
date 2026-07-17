@@ -3,13 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A clear, step-by-step guide to installing Personal AI Workspace with Notion and optional integrations.">
+  <meta name="description" content="An interactive, beginner-friendly guide to installing Personal AI Workspace with ChatGPT or Codex and Notion.">
   <meta property="og:title" content="How to install Personal AI Workspace">
-  <meta property="og:description" content="What is required, what is optional, and how to complete the installation from beginning to end.">
+  <meta property="og:description" content="Check the requirements, connect Notion, and follow a guided installation wizard from beginning to end.">
   <meta property="og:type" content="website">
   <title>How to install · Personal AI Workspace</title>
   <link rel="icon" href="assets/favicon.svg">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="site-v2.css">
 </head>
 <body>
   <header class="site-header">
@@ -18,7 +19,7 @@
     <nav>
       <a href="what-it-does.html">What it does</a>
       <a href="install.html" aria-current="page">How to install</a>
-      <a href="index.html#modules">Modules</a>
+      <a href="index.html#benefits">Benefits</a>
       <a href="index.html#release">Latest release</a>
       <a href="https://github.com/oloix888/Personal-AI-Workspace">GitHub</a>
     </nav>
@@ -27,172 +28,195 @@
   <main>
     <section class="page-hero install-page-hero">
       <div class="page-hero-copy">
-        <p class="page-kicker">Installation guide</p>
-        <h1>Install your Personal AI Workspace.</h1>
-        <p class="page-lede">You need ChatGPT, one Notion account, the Notion connector, and the latest installer file. Everything else is optional and can be enabled later.</p>
+        <h1>Install it without guessing.</h1>
+        <p class="page-lede">This page checks the two things the system cannot work without, then guides you through every click, download, prompt and verification step.</p>
         <div class="hero-actions">
-          <a class="button primary" data-latest-installer href="https://github.com/oloix888/Personal-AI-Workspace/releases/latest">Download latest installer</a>
-          <a class="button secondary" href="https://github.com/oloix888/Personal-AI-Workspace/releases/latest">View latest release</a>
+          <a class="button primary" href="#requirements">Start with the requirements</a>
+          <a class="button secondary" href="#wizard">Open the installation wizard</a>
         </div>
-        <p class="release-meta">Current stable method: Markdown creator · Latest release: <span data-latest-version>v1.5.1</span></p>
+        <p class="release-meta">Current public installation: latest stable Markdown creator · <span data-latest-version>v1.5.1</span></p>
       </div>
-      <div class="page-hero-aside" aria-label="Installation summary">
-        <strong>What you will get</strong>
-        <span>A structured Notion workspace</span>
-        <span>A modular Workspace Constitution</span>
-        <span>Knowledge, relations, decisions and tasks</span>
-        <span>Optional connector and skill configuration</span>
-        <span>A verification and handover checklist</span>
-      </div>
-    </section>
-
-    <section class="section page-intro">
-      <div class="section-heading">
-        <p>Before you start</p>
-        <h2>Only Notion is essential.</h2>
-      </div>
-      <div class="intro-copy">
-        <p>Personal AI Workspace stores its durable structure and operating rules in Notion. Without a connected Notion account, there is no persistent workspace.</p>
-        <p>All other services are optional. You can begin with the core system and add email, files, calendars, task backends, professional tools or specialist plugins later.</p>
+      <div class="page-hero-aside" aria-label="Installation promises">
+        <strong>No technical knowledge required</strong>
+        <span>Plain language and exact click paths.</span>
+        <span>Different instructions for ChatGPT and Codex.</span>
+        <span>Optional integrations can be skipped.</span>
+        <span>Your progress stays in this browser.</span>
       </div>
     </section>
 
-    <section class="section requirements-section">
-      <div class="requirements-layout">
-        <article class="requirement-column essential">
-          <p class="page-kicker">Absolutely required</p>
-          <h2>Core installation requirements</h2>
-          <ul class="check-list">
-            <li><strong>A ChatGPT account</strong><span>It must support file uploads and the Notion connector on the surface you are using.</span></li>
-            <li><strong>A Notion account</strong><span>Use the account and workspace where you want the system to live.</span></li>
-            <li><strong>The Notion connector</strong><span>Connect it before installation and verify the correct account identity.</span></li>
-            <li><strong>The latest installer file</strong><span>Download the Markdown creator from the latest GitHub release.</span></li>
-            <li><strong>A new ChatGPT conversation</strong><span>Do not install inside an old, unrelated thread with a large existing context.</span></li>
-          </ul>
+    <section id="requirements" class="section requirements-first">
+      <div class="section-heading wide-heading">
+        <p>What you will need</p>
+        <h2>Do not begin until both accounts are ready.</h2>
+      </div>
+
+      <div class="required-platforms">
+        <article class="platform-card required-card">
+          <div class="platform-logo-pair" aria-hidden="true">
+            <img src="https://cdn.simpleicons.org/openai/111111" alt="">
+            <span class="or-divider">or</span>
+            <span class="codex-mark">CODEX</span>
+          </div>
+          <div>
+            <span class="requirement-state">Required</span>
+            <h3>A ChatGPT or Codex account</h3>
+            <p>Use the OpenAI product in which you want the installer and skills to run. You will choose your path in the wizard below.</p>
+            <a class="inline-action" href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">Open ChatGPT / Codex →</a>
+          </div>
         </article>
 
-        <article class="requirement-column optional">
-          <p class="page-kicker">Useful, not required</p>
-          <h2>Optional integrations</h2>
-          <div class="option-rows">
-            <div><strong>Gmail</strong><span>Email context, drafting and approved sending.</span></div>
-            <div><strong>Google Calendar</strong><span>Events, availability and time blocks.</span></div>
-            <div><strong>Google Contacts</strong><span>Verified contact details and relationship context.</span></div>
-            <div><strong>Google Drive</strong><span>Private archival of generated files and packages.</span></div>
-            <div><strong>GitHub</strong><span>Task execution, issues, code and project workflows.</span></div>
-            <div><strong>Other skills and plugins</strong><span>LinkedIn, Sales, Data Analytics, Documents, PDF, Spreadsheets, Creative Production, Meetup and specialist packs.</span></div>
+        <article class="platform-card required-card">
+          <div class="platform-logo-single" aria-hidden="true">
+            <img src="https://cdn.simpleicons.org/notion/111111" alt="">
           </div>
-          <p class="small-note">Optional integrations remain owner-controlled. The installer should not silently enable a provider or feature you did not choose.</p>
+          <div>
+            <span class="requirement-state">Required</span>
+            <h3>A Notion account</h3>
+            <p>Notion stores the durable Workspace: its Constitution, Knowledge, Relations, Decisions, Tasks, configuration and operational context.</p>
+            <a class="inline-action" href="https://www.notion.so/signup" target="_blank" rel="noopener noreferrer">Create or open a Notion account →</a>
+          </div>
         </article>
       </div>
+
+      <div class="must-connect-note">
+        <div class="note-icon" aria-hidden="true">!</div>
+        <div>
+          <h3>Connect Notion before installation</h3>
+          <p>First make sure you have a ChatGPT or Codex account and a Notion account. Then install or enable the Notion plugin/app in ChatGPT or Codex and connect it to the exact Notion workspace where you want Personal AI Workspace to live. Only then should you start the installation.</p>
+          <p><strong>Automatic installation requires Notion create/edit capability.</strong> A read-only file-search connection is not enough. The wizard will show you how to verify this without changing anything.</p>
+        </div>
+      </div>
     </section>
 
-    <section class="section install-steps-section">
-      <div class="section-heading">
-        <p>Step by step</p>
-        <h2>Complete the installation from beginning to end.</h2>
+    <section class="section optional-integrations-section">
+      <div class="section-heading wide-heading">
+        <p>Other available integrations</p>
+        <h2>Everything below is optional.</h2>
+      </div>
+      <p class="section-lede-narrow">Start with Notion. Add other services only when they solve a real problem and your plan, region and product surface support them.</p>
+
+      <div class="integration-logo-grid" aria-label="Optional apps and services">
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/gmail" alt=""><span>Gmail</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/googlecalendar" alt=""><span>Calendar</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/googlecontacts" alt=""><span>Contacts</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/googledrive" alt=""><span>Drive</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/github" alt=""><span>GitHub</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/linkedin" alt=""><span>LinkedIn</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/linkedin" alt=""><span>LinkedIn Ads</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/googledocs" alt=""><span>Docs</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/googlesheets" alt=""><span>Sheets</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/googleslides" alt=""><span>Slides</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/spotify" alt=""><span>Spotify</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/applemusic" alt=""><span>Apple Music</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/adobe" alt=""><span>Adobe</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/huggingface" alt=""><span>Hugging Face</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/meetup" alt=""><span>Meetup</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/bookingdotcom" alt=""><span>Booking.com</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/render" alt=""><span>Render</span></div>
+        <div class="integration-logo"><img src="https://cdn.simpleicons.org/revolut" alt=""><span>Revolut X</span></div>
       </div>
 
-      <ol class="step-list">
-        <li class="step">
-          <span class="step-number">1</span>
-          <div>
-            <h3>Connect Notion to ChatGPT</h3>
-            <p>Open ChatGPT settings, find Apps or Connectors, choose Notion, and connect the account where the workspace should be created. Interface labels may vary slightly by product surface.</p>
-            <p><strong>Important:</strong> make sure the connected account is the intended owner account before allowing any write.</p>
-          </div>
-        </li>
-        <li class="step">
-          <span class="step-number">2</span>
-          <div>
-            <h3>Download the latest installer</h3>
-            <p>Open the latest release and download the file whose name starts with <code>Personal-AI-Workspace-Creator-</code> and ends with <code>.md</code>.</p>
-            <a class="inline-action" data-latest-installer href="https://github.com/oloix888/Personal-AI-Workspace/releases/latest">Download the installer →</a>
-          </div>
-        </li>
-        <li class="step">
-          <span class="step-number">3</span>
-          <div>
-            <h3>Open a completely new ChatGPT conversation</h3>
-            <p>Use a fresh thread. Attach the downloaded Markdown file before sending the first instruction.</p>
-          </div>
-        </li>
-        <li class="step">
-          <span class="step-number">4</span>
-          <div>
-            <h3>Paste the installation prompt</h3>
-            <pre class="prompt-block"><code>Follow the instructions in the attached file and guide me through the complete configuration from beginning to end. Do not summarize the file—start with the first stage.</code></pre>
-          </div>
-        </li>
-        <li class="step">
-          <span class="step-number">5</span>
-          <div>
-            <h3>Answer the installer’s questions</h3>
-            <p>Choose the workspace owner identity, assistant name, optional integrations, task backend, file archive preference and other modules. You do not have to enable everything.</p>
-          </div>
-        </li>
-        <li class="step">
-          <span class="step-number">6</span>
-          <div>
-            <h3>Approve the exact workspace structure</h3>
-            <p>The installer should show the proposed structure, risks and rollback before structural writes. Review it, then approve only the scope you actually want installed.</p>
-          </div>
-        </li>
-        <li class="step">
-          <span class="step-number">7</span>
-          <div>
-            <h3>Run the final verification</h3>
-            <p>Confirm that the Constitution, Start Here, modules, registries and core databases can be read back completely. The installer should then give you the exact personalization text and optional project instruction to paste into ChatGPT.</p>
-          </div>
-        </li>
-      </ol>
+      <div class="capability-pack-grid" aria-label="Optional skill and workflow packs">
+        <div><span class="capability-symbol">↗</span><strong>Sales</strong></div>
+        <div><span class="capability-symbol">▥</span><strong>Data Analytics</strong></div>
+        <div><span class="capability-symbol">▤</span><strong>Documents & PDF</strong></div>
+        <div><span class="capability-symbol">✦</span><strong>Creative Production</strong></div>
+        <div><span class="capability-symbol">◫</span><strong>Product Design</strong></div>
+        <div><span class="capability-symbol">⌘</span><strong>Build Web Apps</strong></div>
+        <div><span class="capability-symbol">◇</span><strong>OpenAI Developers</strong></div>
+        <div><span class="capability-symbol">₿</span><strong>Public Equity</strong></div>
+        <div><span class="capability-symbol">▦</span><strong>Investment Banking</strong></div>
+        <div><span class="capability-symbol">⌁</span><strong>Life Sciences</strong></div>
+        <div><span class="capability-symbol">DNA</span><strong>NGS Analysis</strong></div>
+        <div><span class="capability-symbol">＋</span><strong>Specialist packs</strong></div>
+      </div>
+      <p class="small-note centered-note">Availability varies by plan, region, workspace permissions and product surface. The installer records unavailable capabilities honestly instead of silently enabling them.</p>
     </section>
 
-    <section class="section install-modes">
-      <div class="section-heading">
-        <p>Choose your starting level</p>
-        <h2>Start small. Expand when it earns its place.</h2>
+    <section id="wizard" class="section wizard-section">
+      <div class="section-heading wide-heading">
+        <p>Interactive installation guide</p>
+        <h2>Click through one decision at a time.</h2>
       </div>
-      <div class="mode-rail">
+      <p class="section-lede-narrow">The wizard remembers your selected path in this browser only. It does not send your answers anywhere.</p>
+
+      <div class="wizard-shell" data-install-wizard>
+        <div class="wizard-topbar">
+          <div>
+            <span class="wizard-step-label" data-wizard-step-label>Step 1</span>
+            <strong data-wizard-title>Choose your OpenAI product</strong>
+          </div>
+          <div class="wizard-progress-wrap" aria-label="Installation progress">
+            <span data-wizard-progress-text>0%</span>
+            <div class="wizard-progress-track"><span data-wizard-progress-bar></span></div>
+          </div>
+        </div>
+
+        <div class="wizard-body" data-wizard-body aria-live="polite">
+          <div class="wizard-content">
+            <h3>Where do you want to run the installation?</h3>
+            <p>Choose ChatGPT or Codex. JavaScript will turn this section into the interactive step-by-step wizard; if it is disabled, the complete static requirements and troubleshooting guidance on this page remain available.</p>
+            <div class="wizard-choice-grid" aria-hidden="true">
+              <div class="wizard-choice"><strong>ChatGPT</strong><span>Guided chat with the Markdown installer.</span></div>
+              <div class="wizard-choice"><strong>Codex Desktop</strong><span>Local project and Agent Skills workflow.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="wizard-footer">
+          <button class="wizard-back" type="button" data-wizard-action="back">← Back</button>
+          <div class="wizard-main-actions">
+            <button class="wizard-button done" type="button" data-wizard-action="done">Done — continue</button>
+            <button class="wizard-button not-done" type="button" data-wizard-action="not-done">Not done — continue</button>
+            <button class="wizard-button quit" type="button" data-wizard-action="quit">Quit installation</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section current-vs-next">
+      <div class="section-heading wide-heading">
+        <p>What you can install today</p>
+        <h2>Use the stable creator now. Add the Skill Pack when it is released.</h2>
+      </div>
+      <div class="release-paths">
         <article>
-          <span>01</span>
-          <h3>Core only</h3>
-          <p>Notion, Constitution, Knowledge, Relations, Decision Engine and Context Bootstrap.</p>
+          <span class="path-status available">Available now</span>
+          <h3>Markdown creator</h3>
+          <p>Downloads as one <code>.md</code> file and guides ChatGPT or Codex through the complete Notion installation.</p>
+          <a class="button dark" data-latest-installer href="https://github.com/oloix888/Personal-AI-Workspace/releases/latest">Download latest stable installer</a>
         </article>
         <article>
-          <span>02</span>
-          <h3>Productivity</h3>
-          <p>Add Gmail, Calendar, Contacts, Drive, GitHub and artifact tools.</p>
-        </article>
-        <article>
-          <span>03</span>
-          <h3>Specialist packs</h3>
-          <p>Add business, developer, analytics, finance, life-science or lifestyle capabilities only when useful.</p>
+          <span class="path-status planned">Approved next release</span>
+          <h3>Installer & Context Bootstrap skills</h3>
+          <p>The upcoming release adds installable Agent Skills, Memory Fusion, bounded People in Focus and salient events, confidential wellbeing/health context, active Journal/Observations/Decisions/Projects workflows and deterministic upgrade tooling.</p>
+          <a class="button outline-dark" href="https://github.com/oloix888/Personal-AI-Workspace/pull/11">Follow development</a>
         </article>
       </div>
     </section>
 
     <section class="section troubleshooting">
       <div class="section-heading">
-        <p>Common problems</p>
-        <h2>Stop when verification is incomplete.</h2>
+        <p>Common blockers</p>
+        <h2>Stop when a required check fails.</h2>
       </div>
       <div class="troubleshooting-list">
-        <article><h3>The wrong Notion account is connected</h3><p>Do not continue. Reconnect the correct account and restart the account verification step.</p></article>
-        <article><h3>The Constitution is truncated</h3><p>Treat it as not loaded. The installer must shorten or modularize it and then perform a complete readback.</p></article>
-        <article><h3>An optional connector is unavailable</h3><p>Continue with an honest unavailable or pending state. Optional integrations must not block the core Notion installation.</p></article>
-        <article><h3>A file upload cannot be verified</h3><p>Report the archive as incomplete. Never claim success from an upload request alone.</p></article>
+        <article><h3>The wrong Notion account is connected</h3><p>Disconnect it, connect the intended workspace, and rerun the identity check. Never install into the wrong account “just for now.”</p></article>
+        <article><h3>Notion is read-only</h3><p>Automatic installation cannot continue. Use a supported Notion plugin/app with create and update permissions, or wait for a documented manual fallback.</p></article>
+        <article><h3>The Constitution is truncated</h3><p>Treat it as not loaded. The installer must repair the layout and complete a full readback before meaningful work continues.</p></article>
+        <article><h3>An optional integration is missing</h3><p>Continue with the core system. Optional capabilities should be marked unavailable or pending, not allowed to block Notion installation.</p></article>
       </div>
     </section>
 
     <section class="cta-band">
       <div>
-        <h2>Ready to build your workspace?</h2>
-        <p>Download the latest installer, open a new conversation, and follow the guided setup.</p>
+        <h2>Ready to stop starting from zero?</h2>
+        <p>Check the two required accounts, connect Notion, and let the wizard guide the rest.</p>
       </div>
       <div class="hero-actions">
-        <a class="button primary" data-latest-installer href="https://github.com/oloix888/Personal-AI-Workspace/releases/latest">Download installer</a>
-        <a class="button secondary" href="what-it-does.html">See what it can do</a>
+        <a class="button primary" href="#wizard">Start the wizard</a>
+        <a class="button secondary" href="what-it-does.html">See what you gain</a>
       </div>
     </section>
   </main>
@@ -202,5 +226,6 @@
     <span>Originally created by Michał Poliński & Emma ✨</span>
   </footer>
   <script src="app.js"></script>
+  <script src="wizard.js"></script>
 </body>
 </html>
