@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["state", "confidence", "matched", "missing", "conflicts", "coverage"],
+  "properties": {
+    "state": {"enum": ["NOT_INSTALLED", "PARTIAL", "INSTALLED_SUPPORTED", "INSTALLED_UNKNOWN", "DAMAGED"]},
+    "confidence": {"enum": ["HIGH", "MEDIUM", "LOW"]},
+    "framework_version": {"type": ["string", "null"]},
+    "matched": {"type": "array", "items": {"type": "string"}},
+    "missing": {"type": "array", "items": {"type": "string"}},
+    "conflicts": {"type": "array", "items": {"type": "string"}},
+    "coverage": {"enum": ["FULL", "PARTIAL", "DEGRADED"]},
+    "reason": {"type": "string"}
+  }
+}

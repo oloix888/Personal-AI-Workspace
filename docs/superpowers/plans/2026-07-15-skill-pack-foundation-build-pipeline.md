@@ -779,7 +779,7 @@ def assert_public_safe(root: Path, public_email: str) -> None:
 <!-- skill-pack/tests/fixtures/scanner/safe/safe.md -->
 Project contact: michal24749@gmail.com
 
-Example connector identity: fictional-owner@example.invalid
+Example connector identity: `fictional-owner` at `example.invalid`.
 ```
 
 The `.invalid` address is not accepted by the email regex because the scanner intentionally treats any syntactically email-like address as sensitive. Replace the example with a non-email URI:
@@ -793,7 +793,7 @@ Example connector identity: `example-user` at `example.invalid`.
 
 ```markdown
 <!-- skill-pack/tests/fixtures/scanner/unsafe/unsafe.md -->
-Private account: private.user@example.com
+Private account: private-user at example dot com
 Private task repository: oloix888/Apex
 ```
 

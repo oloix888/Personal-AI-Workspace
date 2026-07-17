@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["generated_at", "capabilities"],
+  "properties": {
+    "generated_at": {"type": "string", "format": "date-time"},
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["capability", "state", "detail"],
+        "properties": {
+          "capability": {"type": "string", "minLength": 1},
+          "state": {
+            "enum": [
+              "AVAILABLE_READ_WRITE",
+              "AVAILABLE_READ_ONLY",
+              "UNAVAILABLE",
+              "UNAUTHORIZED",
+              "ACCOUNT_MISMATCH",
+              "DEGRADED",
+              "UNKNOWN"
+            ]
+          },
+          "detail": {"type": "string"}
+        }
+      }
+    }
+  }
+}
