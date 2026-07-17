@@ -73,7 +73,7 @@ const localizeBrandMarks = () => {
   const logoConfig = {
     Gmail: ['gmail', 'gmail'],
     Calendar: ['calendar', 'calendar'],
-    Contacts: ['contacts', 'contacts'],
+    'Contacts': ['contacts', 'contacts'],
     Drive: ['drive', 'drive'],
     GitHub: ['github', 'github'],
     LinkedIn: ['linkedin', 'linkedin'],
