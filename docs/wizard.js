@@ -3,10 +3,27 @@
   if (!wizard) return;
 
   const KEY = 'paiw-install-wizard-v3';
-  const fresh = {current:'choose-host',host:null,history:[],completed:[],selectedIntegrations:[],resumeStep:null,status:'active'};
-  const load = () => { try { return {...fresh,...JSON.parse(localStorage.getItem(KEY) || '{}')}; } catch { return {...fresh}; } };
+  const fresh = {
+    current: 'choose-host',
+    host: null,
+    history: [],
+    completed: [],
+    selectedIntegrations: [],
+    resumeStep: null,
+    status: 'active',
+  };
+
+  const load = () => {
+    try {
+      return {...fresh, ...JSON.parse(localStorage.getItem(KEY) || '{}')};
+    } catch {
+      return {...fresh};
+    }
+  };
+
   let state = load();
   const save = () => localStorage.setItem(KEY, JSON.stringify(state));
+
   const body = wizard.querySelector('[data-wizard-body]');
   const title = wizard.querySelector('[data-wizard-title]');
   const stepLabel = wizard.querySelector('[data-wizard-step-label]');
@@ -16,46 +33,459 @@
   const done = wizard.querySelector('[data-wizard-action="done"]');
   const notDone = wizard.querySelector('[data-wizard-action="not-done"]');
   const quit = wizard.querySelector('[data-wizard-action="quit"]');
+
   const host = () => state.host === 'codex' ? 'Codex Desktop' : 'ChatGPT';
-  const installPrompt = `Follow the instructions in the attached file and guide me through the complete installation from beginning to end.\n\nDo not summarize the file. Start with the first installation stage. Verify the connected Notion account and read/write capability before any structural write. Show me the exact proposed structure, risks and rollback before asking for approval. Do not claim a write succeeded without readback.`;
-  const verifyPrompt = `Use Notion and report:\n1. the connected account name and email;\n2. the connected Notion workspace;\n3. whether you can read pages;\n4. whether you can create and update pages and databases.\n\nDo not create, edit or delete anything yet.`;
-  const integrations = ['Gmail','Google Calendar','Google Contacts','Google Drive','GitHub','LinkedIn','LinkedIn Ads','Sales','Data Analytics','Documents / PDF','Spreadsheets / Presentations','Creative Production / Adobe','Meetup','Spotify / Apple Music','Hugging Face / Developer tools','Specialist packs'];
+
+  const installPrompt = `Follow the instructions in the attached file and guide me through the complete installation from beginning to end.
+
+Do not summarize the file. Start with the first installation stage. Verify the connected Notion account and read/write capability before any structural write. Show me the exact proposed structure, risks and rollback before asking for approval. Do not claim a write succeeded without readback.`;
+
+  const verifyPrompt = `Use Notion and report:
+1. the connected account name and email;
+2. the connected Notion workspace;
+3. whether you can read pages;
+4. whether you can create and update pages and databases.
+
+Do not create, edit or delete anything yet.`;
+
+  const integrations = [
+    'Gmail',
+    'Google Calendar',
+    'Google Contacts',
+    'Google Drive',
+    'GitHub',
+    'LinkedIn',
+    'LinkedIn Ads',
+    'Sales',
+    'Data Analytics',
+    'Documents / PDF',
+    'Spreadsheets / Presentations',
+    'Creative Production / Adobe',
+    'Meetup',
+    'Spotify / Apple Music',
+    'Hugging Face / Developer tools',
+    'Specialist packs',
+  ];
 
   const steps = {
-    'choose-host':{label:'Step 1 of 9',title:'Choose ChatGPT or Codex',progress:6,notDoneDisabled:true,doneDisabled:()=>!state.host,nextDone:'openai-account',html:()=>`<div class="wizard-content"><h3>Where do you want to run the installation?</h3><p>Both paths use the same Notion Workspace. Choose one now; the instructions below will adapt.</p><div class="wizard-choice-grid" role="radiogroup"><button class="wizard-choice ${state.host==='chatgpt'?'selected':''}" type="button" data-host-choice="chatgpt"><strong>ChatGPT</strong><span>Guided chat with the attached Markdown installer.</span></button><button class="wizard-choice ${state.host==='codex'?'selected':''}" type="button" data-host-choice="codex"><strong>Codex Desktop</strong><span>Local project and Agent Skills workflow.</span></button></div><div class="wizard-callout"><h4>You can use both later</h4><p>The durable system lives in Notion. The public skills can be installed separately in ChatGPT and Codex after release.</p></div></div>`},
-    'openai-account':{label:'Step 2 of 9',title:'Confirm your OpenAI account',progress:14,notDoneDisabled:true,nextDone:'notion-account',html:()=>`<div class="wizard-content"><h3>Sign in to ${host()}.</h3><p>This is mandatory, so “Not done” is visible but disabled.</p><ol class="wizard-instruction-list"><li>Open <a href="https://chatgpt.com/" target="_blank" rel="noopener">chatgpt.com</a> or Codex Desktop.</li><li>Select <strong>Log in</strong>; choose <strong>Sign up</strong> if needed.</li><li>Complete email, Google, Apple or organization sign-in.</li><li>Confirm you can open a new conversation or task.</li></ol><div class="wizard-link-list"><a href="https://chatgpt.com/" target="_blank" rel="noopener">Open ChatGPT / Codex</a><a href="https://developers.openai.com/codex/app/" target="_blank" rel="noopener">Codex Desktop guide</a></div></div>`},
-    'notion-account':{label:'Step 3 of 9',title:'Confirm your Notion account',progress:22,notDoneDisabled:true,nextDone:'connect-notion',html:()=>`<div class="wizard-content"><h3>Sign in to the Notion workspace you want to use.</h3><p>This is mandatory, so “Not done” is visible but disabled.</p><ol class="wizard-instruction-list"><li>Open <a href="https://www.notion.so/" target="_blank" rel="noopener">notion.so</a>.</li><li>Log in or create an account.</li><li>Open the exact workspace that should contain Personal AI Workspace.</li><li>Write down its account email and workspace name.</li></ol><div class="wizard-link-list"><a href="https://www.notion.so/signup" target="_blank" rel="noopener">Create or open Notion</a></div></div>`},
-    'connect-notion':{label:'Step 4 of 9',title:'Connect Notion',progress:34,nextDone:'verify-notion',nextNotDone:'connection-help',html:()=>`<div class="wizard-content"><h3>Connect the Notion plugin/app in ${host()}.</h3><ol class="wizard-instruction-list">${state.host==='codex'?'<li>Open Codex Desktop and its <strong>Plugin directory</strong> or Settings.</li>':'<li>In ChatGPT, select your <strong>profile icon</strong> and open <strong>Settings</strong>.</li>'}<li>Open <strong>Plugins</strong>, <strong>Apps</strong> or <strong>Apps &amp; Connectors</strong>.</li><li>Search for <strong>Notion</strong> and open its listing.</li><li>Select <strong>Connect</strong>.</li><li>Sign in to Notion and authorize the exact workspace/pages you intend to use.</li><li>Return to ${host()} and open a new conversation or task.</li></ol><div class="wizard-callout critical"><h4>Read-only is not enough</h4><p>Automatic installation needs Notion create/update capability. File search alone cannot build the Workspace.</p></div><div class="wizard-link-list"><a href="https://help.openai.com/en/articles/20001256" target="_blank" rel="noopener">Official plugin guide</a><a href="https://help.openai.com/en/articles/11487775" target="_blank" rel="noopener">Official apps guide</a></div></div>`},
-    'connection-help':{label:'Connection help',title:'Fix the Notion connection',progress:34,nextDone:'connect-notion',nextNotDone:'paused',html:()=>`<div class="wizard-content"><h3>Do not install yet.</h3><div class="wizard-callout critical"><h4>The required Notion connection is missing or uncertain</h4><p>Reconnect the correct account, verify permissions, then return to the previous step. Continuing without write capability would produce an incomplete installation.</p></div><p>Choose “Done” after fixing the connection. Choose “Not done” to pause safely.</p></div>`},
-    'verify-notion':{label:'Step 5 of 9',title:'Verify account and write capability',progress:45,nextDone:'download-installer',nextNotDone:'connection-help',html:()=>`<div class="wizard-content"><h3>Run a no-write verification.</h3><p>Open a new ${host()} conversation/task and paste this prompt. It must report the intended account, workspace and create/update capability without changing anything.</p><pre class="prompt-block"><code>${verifyPrompt}</code></pre><div class="copy-row"><button class="copy-button" type="button" data-copy-text="${encodeURIComponent(verifyPrompt)}">Copy verification prompt</button><span class="copy-status" aria-live="polite"></span></div><div class="wizard-callout critical"><h4>Stop on mismatch</h4><p>If the account is wrong, the response is partial, or write capability is absent, choose “Not done.”</p></div></div>`},
-    'download-installer':{label:'Step 6 of 9',title:'Download the stable installer',progress:56,nextDone:'start-installation',nextNotDone:'download-help',html:()=>`<div class="wizard-content"><h3>Download one Markdown file.</h3><ol class="wizard-instruction-list"><li>Open the latest release.</li><li>Find the asset beginning <code>Personal-AI-Workspace-Creator-</code> and ending <code>.md</code>.</li><li>Download it and note its location.</li></ol><div class="wizard-link-list"><a data-latest-installer href="https://github.com/oloix888/Personal-AI-Workspace/releases/latest">Download latest stable installer</a><a href="https://github.com/oloix888/Personal-AI-Workspace/releases/latest" target="_blank" rel="noopener">View release page</a></div></div>`},
-    'download-help':{label:'Download help',title:'Find the installer file',progress:56,nextDone:'download-installer',nextNotDone:'paused',html:()=>`<div class="wizard-content"><h3>Use the release asset, not the webpage.</h3><p>On GitHub Releases, scroll to <strong>Assets</strong>. Download the <code>.md</code> creator file. If Assets is collapsed, expand it first.</p><div class="wizard-link-list"><a href="https://github.com/oloix888/Personal-AI-Workspace/releases/latest" target="_blank" rel="noopener">Open latest release</a></div></div>`},
-    'start-installation':{label:'Step 7 of 9',title:'Start the installer',progress:68,nextDone:'approve-blueprint',nextNotDone:'paused',html:()=>`<div class="wizard-content"><h3>Attach or add the installer to ${host()}.</h3>${state.host==='codex'?'<ol class="wizard-instruction-list"><li>Open Codex Desktop.</li><li>Create or open a dedicated local folder for the installation session.</li><li>Add the downloaded <code>.md</code> file to that folder or attach it to the task.</li><li>Start a new task with the prompt below.</li></ol>':'<ol class="wizard-instruction-list"><li>Open a completely new ChatGPT conversation.</li><li>Select the <strong>plus / paperclip</strong> button.</li><li>Choose <strong>Upload from computer</strong> and attach the downloaded <code>.md</code> file.</li><li>Paste the prompt below and send it.</li></ol>'}<pre class="prompt-block"><code>${installPrompt}</code></pre><div class="copy-row"><button class="copy-button" type="button" data-copy-text="${encodeURIComponent(installPrompt)}">Copy installation prompt</button><span class="copy-status" aria-live="polite"></span></div></div>`},
-    'approve-blueprint':{label:'Step 8 of 9',title:'Review the structural blueprint',progress:79,nextDone:'optional-integrations',nextNotDone:'approval-help',html:()=>`<div class="wizard-content"><h3>Approve only the exact structure you understand.</h3><p>The installer should identify whether this is a fresh install or upgrade, list pages/databases/views/properties, explain risks and rollback, and ask for one exact approval before structural writes.</p><div class="wizard-callout"><h4>A correct blueprint includes</h4><p>Notion account identity, current/target version, exact objects changed, preserved data, optional integrations, idempotency, validation and rollback.</p></div><p>If the installer writes first or asks for vague blanket approval, choose “Not done.”</p></div>`},
-    'approval-help':{label:'Blueprint help',title:'Ask for a safer blueprint',progress:79,nextDone:'approve-blueprint',nextNotDone:'paused',html:()=>`<div class="wizard-content"><h3>Do not approve an unclear plan.</h3><p>Ask the installer to stop and provide the exact structural diff, risks, data-preservation rules, validation and rollback. Return only after the blueprint is specific enough to review.</p><pre class="prompt-block"><code>Stop before making structural changes. Show the current state, target state, exact pages/databases/views/properties you will create or modify, preserved data, risks, rollback and readback tests. Then ask for approval of that exact scope.</code></pre></div>`},
-    'optional-integrations':{label:'Optional setup',title:'Choose optional integrations',progress:87,nextDone:'verify-installation',nextNotDone:'verify-installation',html:()=>`<div class="wizard-content"><h3>Select only what you want to configure now.</h3><p>Notion is already required. The following integrations are optional and can remain pending or disabled.</p><div class="integration-check-grid">${integrations.map(name=>`<label class="integration-check"><input type="checkbox" value="${name}" ${state.selectedIntegrations.includes(name)?'checked':''}><span>${name}</span></label>`).join('')}</div><div class="wizard-callout"><h4>Safe default</h4><p>Leave uncertain providers unchecked. The installer must not silently enable, switch or authorize them.</p></div></div>`},
-    'verify-installation':{label:'Step 9 of 9',title:'Verify the finished installation',progress:95,nextDone:'complete',nextNotDone:'paused',html:()=>`<div class="wizard-content"><h3>Demand complete readback before accepting success.</h3><ol class="wizard-instruction-list"><li>Confirm Constitution and Start Here exist and can be read completely.</li><li>Confirm core databases, Feature Registry and Context Bootstrap exist.</li><li>Confirm account IDs, links, required properties and views.</li><li>Confirm no duplicates were created.</li><li>Receive the exact Personalization text and project instruction.</li><li>Save the final report, version and any unavailable/degraded capabilities.</li></ol><div class="wizard-callout critical"><h4>No readback, no completion</h4><p>A successful API response is not enough. Every critical write must be fetched and verified.</p></div></div>`},
-    'complete':{label:'Complete',title:'Installation checklist complete',progress:100,hideNotDone:true,nextDone:'choose-host',doneLabel:'Start again',html:()=>`<div class="wizard-content"><div class="wizard-complete-mark">✓</div><h3>Your guided checklist is complete.</h3><p>The actual installation is complete only if ${host()} also returned a successful final readback report.</p><div class="wizard-summary"><article><h4>Installation path</h4><p>${host()}</p></article><article><h4>Optional integrations selected</h4><p>${state.selectedIntegrations.join(', ') || 'None for now'}</p></article></div><div class="wizard-callout success"><h4>Next habit</h4><p>At the start of a new conversation, load the Workspace Constitution through the configured Notion connector and build a current Context Bootstrap briefing.</p></div></div>`},
-    'paused':{label:'Paused safely',title:'Installation is paused',progress:state.progress||0,hideNotDone:true,nextDone:()=>state.resumeStep||'choose-host',doneLabel:'Resume installation',html:()=>`<div class="wizard-content"><h3>No destructive action was taken by this webpage.</h3><p>Your wizard selections are saved locally. Fix the blocker, then resume from the previous step.</p></div>`},
-    'cancelled':{label:'Cancelled',title:'Installation was cancelled',progress:0,hideNotDone:true,nextDone:'choose-host',doneLabel:'Start again',html:()=>`<div class="wizard-content"><h3>You left the installation.</h3><p>The webpage did not write to Notion or OpenAI. Restart whenever both required accounts and the Notion connection are ready.</p></div>`}
+    'choose-host': {
+      label: 'Step 1 of 9',
+      title: 'Choose ChatGPT or Codex',
+      progress: 6,
+      notDoneDisabled: true,
+      doneDisabled: () => !state.host,
+      nextDone: 'openai-account',
+      html: () => `
+        <div class="wizard-content">
+          <h3>Where do you want to run the installation?</h3>
+          <p>Both paths use the same Notion Workspace. Choose one now; the instructions below will adapt.</p>
+          <div class="wizard-choice-grid" role="radiogroup" aria-label="Choose ChatGPT or Codex">
+            <button class="wizard-choice ${state.host === 'chatgpt' ? 'selected' : ''}" type="button" data-host-choice="chatgpt" role="radio" aria-checked="${state.host === 'chatgpt'}">
+              <strong>ChatGPT</strong>
+              <span>Guided chat with the attached Markdown installer.</span>
+            </button>
+            <button class="wizard-choice ${state.host === 'codex' ? 'selected' : ''}" type="button" data-host-choice="codex" role="radio" aria-checked="${state.host === 'codex'}">
+              <strong>Codex Desktop</strong>
+              <span>Local project and Agent Skills workflow.</span>
+            </button>
+          </div>
+          <div class="wizard-callout">
+            <h4>You can use both later</h4>
+            <p>The durable system lives in Notion. The public skills can be installed separately in ChatGPT and Codex after release.</p>
+          </div>
+        </div>`,
+    },
+    'openai-account': {
+      label: 'Step 2 of 9',
+      title: 'Confirm your OpenAI account',
+      progress: 14,
+      notDoneDisabled: true,
+      nextDone: 'notion-account',
+      html: () => `
+        <div class="wizard-content">
+          <h3>Sign in to ${host()}.</h3>
+          <p>This is mandatory, so “Not done” is visible but disabled.</p>
+          <ol class="wizard-instruction-list">
+            <li>Open <a href="https://chatgpt.com/" target="_blank" rel="noopener">chatgpt.com</a> or Codex Desktop.</li>
+            <li>Select <strong>Log in</strong>; choose <strong>Sign up</strong> if needed.</li>
+            <li>Complete email, Google, Apple or organization sign-in.</li>
+            <li>Confirm you can open a new conversation or task.</li>
+          </ol>
+          <div class="wizard-link-list">
+            <a href="https://chatgpt.com/" target="_blank" rel="noopener">Open ChatGPT / Codex</a>
+            <a href="https://developers.openai.com/codex/app/" target="_blank" rel="noopener">Codex Desktop guide</a>
+          </div>
+        </div>`,
+    },
+    'notion-account': {
+      label: 'Step 3 of 9',
+      title: 'Confirm your Notion account',
+      progress: 22,
+      notDoneDisabled: true,
+      nextDone: 'connect-notion',
+      html: () => `
+        <div class="wizard-content">
+          <h3>Sign in to the Notion workspace you want to use.</h3>
+          <p>This is mandatory, so “Not done” is visible but disabled.</p>
+          <ol class="wizard-instruction-list">
+            <li>Open <a href="https://www.notion.so/" target="_blank" rel="noopener">notion.so</a>.</li>
+            <li>Log in or create an account.</li>
+            <li>Open the exact workspace that should contain Personal AI Workspace.</li>
+            <li>Write down its account email and workspace name.</li>
+          </ol>
+          <div class="wizard-link-list">
+            <a href="https://www.notion.so/signup" target="_blank" rel="noopener">Create or open Notion</a>
+          </div>
+        </div>`,
+    },
+    'connect-notion': {
+      label: 'Step 4 of 9',
+      title: 'Connect Notion',
+      progress: 34,
+      notDoneDisabled: true,
+      nextDone: 'verify-notion',
+      html: () => `
+        <div class="wizard-content">
+          <h3>Connect the Notion plugin/app in ${host()}.</h3>
+          <p>This connection is mandatory. “Not done” remains visible but disabled because the Workspace cannot be installed without Notion.</p>
+          <ol class="wizard-instruction-list">
+            ${state.host === 'codex'
+              ? '<li>Open Codex Desktop and its <strong>Plugin directory</strong> or Settings.</li>'
+              : '<li>In ChatGPT, select your <strong>profile icon</strong> and open <strong>Settings</strong>.</li>'}
+            <li>Open <strong>Plugins</strong>, <strong>Apps</strong> or <strong>Apps &amp; Connectors</strong>.</li>
+            <li>Search for <strong>Notion</strong> and open its listing.</li>
+            <li>Select <strong>Connect</strong>.</li>
+            <li>Sign in to Notion and authorize the exact workspace/pages you intend to use.</li>
+            <li>Return to ${host()} and open a new conversation or task.</li>
+          </ol>
+          <div class="wizard-callout critical">
+            <h4>Read-only is not enough</h4>
+            <p>Automatic installation needs Notion create/update capability. File search alone cannot build the Workspace. Use Back if you still need to fix the connection.</p>
+          </div>
+          <div class="wizard-link-list">
+            <a href="https://help.openai.com/en/articles/20001256" target="_blank" rel="noopener">Official plugin guide</a>
+            <a href="https://help.openai.com/en/articles/11487775" target="_blank" rel="noopener">Official apps guide</a>
+          </div>
+        </div>`,
+    },
+    'connection-help': {
+      label: 'Connection help',
+      title: 'Fix the Notion connection',
+      progress: 34,
+      nextDone: 'connect-notion',
+      nextNotDone: 'paused',
+      html: () => `
+        <div class="wizard-content">
+          <h3>Do not install yet.</h3>
+          <div class="wizard-callout critical">
+            <h4>The required Notion connection is missing or uncertain</h4>
+            <p>Reconnect the correct account, verify permissions, then return to the previous step. Continuing without write capability would produce an incomplete installation.</p>
+          </div>
+          <p>Choose “Done” after fixing the connection. Choose “Not done” to pause safely.</p>
+        </div>`,
+    },
+    'verify-notion': {
+      label: 'Step 5 of 9',
+      title: 'Verify account and write capability',
+      progress: 45,
+      nextDone: 'download-installer',
+      nextNotDone: 'connection-help',
+      html: () => `
+        <div class="wizard-content">
+          <h3>Run a no-write verification.</h3>
+          <p>Open a new ${host()} conversation/task and paste this prompt. It must report the intended account, workspace and create/update capability without changing anything.</p>
+          <pre class="prompt-block"><code>${verifyPrompt}</code></pre>
+          <div class="copy-row">
+            <button class="copy-button" type="button" data-copy-text="${encodeURIComponent(verifyPrompt)}">Copy verification prompt</button>
+            <span class="copy-status" aria-live="polite"></span>
+          </div>
+          <div class="wizard-callout critical">
+            <h4>Stop on mismatch</h4>
+            <p>If the account is wrong, the response is partial, or write capability is absent, choose “Not done.”</p>
+          </div>
+        </div>`,
+    },
+    'download-installer': {
+      label: 'Step 6 of 9',
+      title: 'Download the stable installer',
+      progress: 56,
+      nextDone: 'start-installation',
+      nextNotDone: 'download-help',
+      html: () => `
+        <div class="wizard-content">
+          <h3>Download one Markdown file.</h3>
+          <ol class="wizard-instruction-list">
+            <li>Open the latest release.</li>
+            <li>Find the asset beginning <code>Personal-AI-Workspace-Creator-</code> and ending <code>.md</code>.</li>
+            <li>Download it and note its location.</li>
+          </ol>
+          <div class="wizard-link-list">
+            <a data-latest-installer href="https://github.com/oloix888/Personal-AI-Workspace/releases/latest">Download latest stable installer</a>
+            <a href="https://github.com/oloix888/Personal-AI-Workspace/releases/latest" target="_blank" rel="noopener">View release page</a>
+          </div>
+        </div>`,
+    },
+    'download-help': {
+      label: 'Download help',
+      title: 'Find the installer file',
+      progress: 56,
+      nextDone: 'download-installer',
+      nextNotDone: 'paused',
+      html: () => `
+        <div class="wizard-content">
+          <h3>Use the release asset, not the webpage.</h3>
+          <p>On GitHub Releases, scroll to <strong>Assets</strong>. Download the <code>.md</code> creator file. If Assets is collapsed, expand it first.</p>
+          <div class="wizard-link-list">
+            <a href="https://github.com/oloix888/Personal-AI-Workspace/releases/latest" target="_blank" rel="noopener">Open latest release</a>
+          </div>
+        </div>`,
+    },
+    'start-installation': {
+      label: 'Step 7 of 9',
+      title: 'Start the installer',
+      progress: 68,
+      nextDone: 'approve-blueprint',
+      nextNotDone: 'paused',
+      html: () => `
+        <div class="wizard-content">
+          <h3>Attach or add the installer to ${host()}.</h3>
+          ${state.host === 'codex'
+            ? `<ol class="wizard-instruction-list">
+                <li>Open Codex Desktop.</li>
+                <li>Create or open a dedicated local folder for the installation session.</li>
+                <li>Add the downloaded <code>.md</code> file to that folder or attach it to the task.</li>
+                <li>Start a new task with the prompt below.</li>
+              </ol>`
+            : `<ol class="wizard-instruction-list">
+                <li>Open a completely new ChatGPT conversation.</li>
+                <li>Select the <strong>plus / paperclip</strong> button.</li>
+                <li>Choose <strong>Upload from computer</strong> and attach the downloaded <code>.md</code> file.</li>
+                <li>Paste the prompt below and send it.</li>
+              </ol>`}
+          <pre class="prompt-block"><code>${installPrompt}</code></pre>
+          <div class="copy-row">
+            <button class="copy-button" type="button" data-copy-text="${encodeURIComponent(installPrompt)}">Copy installation prompt</button>
+            <span class="copy-status" aria-live="polite"></span>
+          </div>
+        </div>`,
+    },
+    'approve-blueprint': {
+      label: 'Step 8 of 9',
+      title: 'Review the structural blueprint',
+      progress: 79,
+      nextDone: 'optional-integrations',
+      nextNotDone: 'approval-help',
+      html: () => `
+        <div class="wizard-content">
+          <h3>Approve only the exact structure you understand.</h3>
+          <p>The installer should identify whether this is a fresh install or upgrade, list pages/databases/views/properties, explain risks and rollback, and ask for one exact approval before structural writes.</p>
+          <div class="wizard-callout">
+            <h4>A correct blueprint includes</h4>
+            <p>Notion account identity, current/target version, exact objects changed, preserved data, optional integrations, idempotency, validation and rollback.</p>
+          </div>
+          <p>If the installer writes first or asks for vague blanket approval, choose “Not done.”</p>
+        </div>`,
+    },
+    'approval-help': {
+      label: 'Blueprint help',
+      title: 'Ask for a safer blueprint',
+      progress: 79,
+      nextDone: 'approve-blueprint',
+      nextNotDone: 'paused',
+      html: () => `
+        <div class="wizard-content">
+          <h3>Do not approve an unclear plan.</h3>
+          <p>Ask the installer to stop and provide the exact structural diff, risks, data-preservation rules, validation and rollback. Return only after the blueprint is specific enough to review.</p>
+          <pre class="prompt-block"><code>Stop before making structural changes. Show the current state, target state, exact pages/databases/views/properties you will create or modify, preserved data, risks, rollback and readback tests. Then ask for approval of that exact scope.</code></pre>
+        </div>`,
+    },
+    'optional-integrations': {
+      label: 'Optional setup',
+      title: 'Choose optional integrations',
+      progress: 87,
+      nextDone: 'verify-installation',
+      nextNotDone: 'verify-installation',
+      html: () => `
+        <div class="wizard-content">
+          <h3>Select only what you want to configure now.</h3>
+          <p>Notion is already required. The following integrations are optional and can remain pending or disabled.</p>
+          <div class="integration-check-grid">
+            ${integrations.map((name) => `
+              <label class="integration-check">
+                <input type="checkbox" value="${name}" ${state.selectedIntegrations.includes(name) ? 'checked' : ''}>
+                <span>${name}</span>
+              </label>`).join('')}
+          </div>
+          <div class="wizard-callout">
+            <h4>Safe default</h4>
+            <p>Leave uncertain providers unchecked. The installer must not silently enable, switch or authorize them.</p>
+          </div>
+        </div>`,
+    },
+    'verify-installation': {
+      label: 'Step 9 of 9',
+      title: 'Verify the finished installation',
+      progress: 95,
+      nextDone: 'complete',
+      nextNotDone: 'paused',
+      html: () => `
+        <div class="wizard-content">
+          <h3>Demand complete readback before accepting success.</h3>
+          <ol class="wizard-instruction-list">
+            <li>Confirm Constitution and Start Here exist and can be read completely.</li>
+            <li>Confirm core databases, Feature Registry and Context Bootstrap exist.</li>
+            <li>Confirm account IDs, links, required properties and views.</li>
+            <li>Confirm no duplicates were created.</li>
+            <li>Receive the exact Personalization text and project instruction.</li>
+            <li>Save the final report, version and any unavailable/degraded capabilities.</li>
+          </ol>
+          <div class="wizard-callout critical">
+            <h4>No readback, no completion</h4>
+            <p>A successful API response is not enough. Every critical write must be fetched and verified.</p>
+          </div>
+        </div>`,
+    },
+    'complete': {
+      label: 'Complete',
+      title: 'Installation checklist complete',
+      progress: 100,
+      hideNotDone: true,
+      nextDone: 'choose-host',
+      doneLabel: 'Start again',
+      html: () => `
+        <div class="wizard-content">
+          <div class="wizard-complete-mark">✓</div>
+          <h3>Your guided checklist is complete.</h3>
+          <p>The actual installation is complete only if ${host()} also returned a successful final readback report.</p>
+          <div class="wizard-summary">
+            <article><h4>Installation path</h4><p>${host()}</p></article>
+            <article><h4>Optional integrations selected</h4><p>${state.selectedIntegrations.join(', ') || 'None for now'}</p></article>
+          </div>
+          <div class="wizard-callout success">
+            <h4>Next habit</h4>
+            <p>At the start of a new conversation, load the Workspace Constitution through the configured Notion connector and build a current Context Bootstrap briefing.</p>
+          </div>
+        </div>`,
+    },
+    'paused': {
+      label: 'Paused safely',
+      title: 'Installation is paused',
+      progress: state.progress || 0,
+      hideNotDone: true,
+      nextDone: () => state.resumeStep || 'choose-host',
+      doneLabel: 'Resume installation',
+      html: () => `
+        <div class="wizard-content">
+          <h3>No destructive action was taken by this webpage.</h3>
+          <p>Your wizard selections are saved locally. Fix the blocker, then resume from the previous step.</p>
+        </div>`,
+    },
+    'cancelled': {
+      label: 'Cancelled',
+      title: 'Installation was cancelled',
+      progress: 0,
+      hideNotDone: true,
+      nextDone: 'choose-host',
+      doneLabel: 'Start again',
+      html: () => `
+        <div class="wizard-content">
+          <h3>You left the installation.</h3>
+          <p>The webpage did not write to Notion or OpenAI. Restart whenever both required accounts and the Notion connection are ready.</p>
+        </div>`,
+    },
   };
 
-  const value = v => typeof v === 'function' ? v() : v;
-  const go = (next, complete=true) => { if (!next) return; if (complete && !state.completed.includes(state.current)) state.completed.push(state.current); state.history.push(state.current); state.current=value(next); save(); render(); };
+  const value = (entry) => typeof entry === 'function' ? entry() : entry;
+
+  const go = (next, complete = true) => {
+    if (!next) return;
+    if (complete && !state.completed.includes(state.current)) {
+      state.completed.push(state.current);
+    }
+    state.history.push(state.current);
+    state.current = value(next);
+    save();
+    render();
+  };
+
   const render = () => {
-    const step=steps[state.current]||steps['choose-host'];
-    title.textContent=step.title; stepLabel.textContent=step.label; progressText.textContent=`${step.progress||0}%`; progressBar.style.width=`${step.progress||0}%`; body.innerHTML=step.html();
-    back.disabled=state.history.length===0||['complete','cancelled'].includes(state.current);
-    done.disabled=Boolean(value(step.doneDisabled)); done.textContent=step.doneLabel||'Done — continue';
-    notDone.hidden=Boolean(step.hideNotDone); notDone.disabled=Boolean(step.notDoneDisabled); quit.hidden=['complete','cancelled'].includes(state.current);
-    body.querySelectorAll('[data-host-choice]').forEach(button=>button.addEventListener('click',()=>{state.host=button.dataset.hostChoice;save();render();}));
-    body.querySelectorAll('.integration-check input').forEach(input=>input.addEventListener('change',()=>{state.selectedIntegrations=[...body.querySelectorAll('.integration-check input:checked')].map(i=>i.value);save();}));
-    body.querySelectorAll('[data-copy-text]').forEach(button=>button.addEventListener('click',async()=>{const text=decodeURIComponent(button.dataset.copyText);const status=button.parentElement.querySelector('.copy-status');try{await navigator.clipboard.writeText(text);status.textContent='Copied';}catch{status.textContent='Select and copy the prompt manually';}}));
+    const step = steps[state.current] || steps['choose-host'];
+    title.textContent = step.title;
+    stepLabel.textContent = step.label;
+    progressText.textContent = `${step.progress || 0}%`;
+    progressBar.style.width = `${step.progress || 0}%`;
+    body.innerHTML = step.html();
+
+    back.disabled = state.history.length === 0 || ['complete', 'cancelled'].includes(state.current);
+    done.disabled = Boolean(value(step.doneDisabled));
+    done.textContent = step.doneLabel || 'Done — continue';
+    notDone.hidden = Boolean(step.hideNotDone);
+    notDone.disabled = Boolean(step.notDoneDisabled);
+    quit.hidden = ['complete', 'cancelled'].includes(state.current);
+
+    body.querySelectorAll('[data-host-choice]').forEach((button) => {
+      button.addEventListener('click', () => {
+        state.host = button.dataset.hostChoice;
+        save();
+        render();
+      });
+    });
+
+    body.querySelectorAll('.integration-check input').forEach((input) => {
+      input.addEventListener('change', () => {
+        state.selectedIntegrations = [...body.querySelectorAll('.integration-check input:checked')].map((item) => item.value);
+        save();
+      });
+    });
+
+    body.querySelectorAll('[data-copy-text]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const text = decodeURIComponent(button.dataset.copyText);
+        const status = button.parentElement.querySelector('.copy-status');
+        try {
+          await navigator.clipboard.writeText(text);
+          status.textContent = 'Copied';
+        } catch {
+          status.textContent = 'Select and copy the prompt manually';
+        }
+      });
+    });
   };
 
-  done.addEventListener('click',()=>{const step=steps[state.current];if(state.current==='complete'||state.current==='cancelled'){state={...fresh};save();render();return;}go(step.nextDone);});
-  notDone.addEventListener('click',()=>{const step=steps[state.current];if(step.notDoneDisabled)return;if(step.nextNotDone==='paused')state.resumeStep=state.current;go(step.nextNotDone,false);});
-  back.addEventListener('click',()=>{const previous=state.history.pop();if(previous){state.current=previous;save();render();}});
-  quit.addEventListener('click',()=>{state.resumeStep=state.current;state.current='cancelled';state.status='cancelled';save();render();});
+  done.addEventListener('click', () => {
+    const step = steps[state.current];
+    if (state.current === 'complete' || state.current === 'cancelled') {
+      state = {...fresh};
+      save();
+      render();
+      return;
+    }
+    go(step.nextDone);
+  });
+
+  notDone.addEventListener('click', () => {
+    const step = steps[state.current];
+    if (step.notDoneDisabled) return;
+    if (step.nextNotDone === 'paused') state.resumeStep = state.current;
+    go(step.nextNotDone, false);
+  });
+
+  back.addEventListener('click', () => {
+    const previous = state.history.pop();
+    if (previous) {
+      state.current = previous;
+      save();
+      render();
+    }
+  });
+
+  quit.addEventListener('click', () => {
+    state.resumeStep = state.current;
+    state.current = 'cancelled';
+    state.status = 'cancelled';
+    save();
+    render();
+  });
+
   render();
 })();
